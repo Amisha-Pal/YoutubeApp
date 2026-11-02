@@ -1,0 +1,45 @@
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+# React / Node
+node_modules/
+dist/
+build/
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Secrets and credentials
+secrets.json
+credentials.json
+service-account.json
+*.pem
+*.key
+
+# Database backups
+*.sql
+*.dump
+*.bak
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
