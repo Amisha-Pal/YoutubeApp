@@ -43,3 +43,8 @@ Thumbs.db
 
 # Logs
 *.log
+# Uploaded video files
+backend/videos/*.mp4
+backend/videos/*.mov
+backend/videos/*.webm
+backend/videos/*.mkv
