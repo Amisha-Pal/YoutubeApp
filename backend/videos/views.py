@@ -1,11 +1,8 @@
-
-from django.db import models
+from django.db import models, transaction
 from rest_framework import generics, permissions
 from rest_framework.parsers import MultiPartParser, FormParser
-
 from .models import Video
 from .serializers import VideoSerializer
-
 
 class VideoListCreateView(generics.ListCreateAPIView):
     serializer_class = VideoSerializer
@@ -17,8 +14,6 @@ class VideoListCreateView(generics.ListCreateAPIView):
             visibility=Video.Visibility.PUBLIC,
         )
 
-        # Private videos listing mein nahi dikhenge.
-        # Unlisted videos bhi public listing mein nahi dikhenge.
         return queryset.select_related("owner")
 
     def get_permissions(self):
@@ -28,8 +23,17 @@ class VideoListCreateView(generics.ListCreateAPIView):
         return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        video = serializer.save(
+            owner=self.request.user,
+            status=Video.Status.PROCESSING,
+        )
 
+        # Celery task database transaction commit hone ke baad trigger hogi.
+        from .tasks import process_uploaded_video
+
+        transaction.on_commit(
+            lambda: process_uploaded_video.delay(video.id)
+        )
 
 class VideoDetailView(generics.RetrieveAPIView):
     serializer_class = VideoSerializer
