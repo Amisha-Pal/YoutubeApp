@@ -74,3 +74,39 @@ class Video(models.Model):
     def __str__(self):
         return self.title
 
+class VideoReaction(models.Model):
+
+    class ReactionType(models.TextChoices):
+        LIKE = "like", "Like"
+        DISLIKE = "dislike", "Dislike"
+
+    video = models.ForeignKey(
+        Video,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="video_reactions",
+    )
+
+    reaction = models.CharField(
+        max_length=10,
+        choices=ReactionType.choices,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["video", "user"],
+                name="unique_video_user_reaction",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.video} - {self.reaction}"

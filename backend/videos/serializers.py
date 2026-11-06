@@ -1,9 +1,13 @@
 from pathlib import Path
 from rest_framework import serializers
-from .models import Video
+from .models import Video, VideoReaction
 
 class VideoSerializer(serializers.ModelSerializer):
     owner_username = serializers.ReadOnlyField(source="owner.username")
+
+    likes_count = serializers.SerializerMethodField()
+    dislikes_count = serializers.SerializerMethodField()
+    user_reaction = serializers.SerializerMethodField()
 
     video_file = serializers.FileField(
         required=True,
@@ -49,6 +53,9 @@ class VideoSerializer(serializers.ModelSerializer):
             "views_count",
             "created_at",
             "updated_at",
+            "likes_count",
+            "dislikes_count",
+            "user_reaction",
         ]
 
         read_only_fields = [
@@ -113,3 +120,25 @@ class VideoSerializer(serializers.ModelSerializer):
             )
 
         return value
+
+    def get_likes_count(self, obj):
+        return obj.reactions.filter(
+            reaction=VideoReaction.ReactionType.LIKE
+        ).count()
+
+    def get_dislikes_count(self, obj):
+        return obj.reactions.filter(
+            reaction=VideoReaction.ReactionType.DISLIKE
+        ).count()
+
+    def get_user_reaction(self, obj):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return None
+
+        reaction = obj.reactions.filter(
+            user=request.user
+        ).first()
+
+        return reaction.reaction if reaction else None

@@ -1,5 +1,5 @@
 import { useWatchLater } from "../context/WatchLaterContext";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ThumbsUp,
@@ -15,24 +15,78 @@ import {
 } from "lucide-react";
 
 import Navbar from "../components/Navbar";
-import { videos } from "../features/videos/videoData";
+import { videos as staticVideos } from "../features/videos/videoData";
+import axiosClient from "../api/axiosClient";
 import { useHistory } from "../context/HistoryContext";
 
 export default function Watch() {
   const { id } = useParams();
+  const [video, setVideo] = useState(null);
+  const [relatedVideos, setRelatedVideos] = useState([]);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const countedViewId = useRef(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchVideo() {
+      try {
+        setPageLoading(true);
+        setPageError("");
+
+        const response = await axiosClient.get(`videos/${id}/`);
+        const data = response.data;
+
+        setLikesCount(Number(data.likes_count) || 0);
+        setDislikesCount(Number(data.dislikes_count) || 0);
+        setUserReaction(data.user_reaction || null);
+
+        const formattedVideo = {
+          id: data.id,
+          title: data.title,
+          description: data.description,
+          channel: data.owner_username,
+          views: `${data.views_count} `,
+          uploaded: new Date(data.created_at).toLocaleDateString(),
+          videoUrl: data.video_file,
+          thumbnail:
+            data.thumbnail ||
+            "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=640&h=360&fit=crop",
+          avatar: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(
+            data.owner_username
+          )}`,
+        };
+
+        if (isMounted) {
+          setVideo(formattedVideo);
+          setRelatedVideos(staticVideos);
+        }
+      } catch (error) {
+        console.error("Video fetch failed:", error);
+
+        if (isMounted) {
+          setPageError("Ye video abhi available nahi hai.");
+        }
+      } finally {
+        if (isMounted) {
+          setPageLoading(false);
+        }
+      }
+    }
+
+    fetchVideo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
   const { addToHistory } = useHistory();
 
-  const [liked, setLiked] = useState(
-    () => localStorage.getItem(`youtube-liked-${id}`) === "true"
-  );
-
-  const [disliked, setDisliked] = useState(
-    () => localStorage.getItem(`youtube-disliked-${id}`) === "true"
-  );
-
-  const [likeCount, setLikeCount] = useState(
-    () => Number(localStorage.getItem(`youtube-like-count-${id}`)) || 0
-  );
+  const [userReaction, setUserReaction] = useState(null);
+  const [likesCount, setLikesCount] = useState(0);
+  const [dislikesCount, setDislikesCount] = useState(0);
+  const [reactionLoading, setReactionLoading] = useState(false);
 
   const [subscribed, setSubscribed] = useState(
     () => localStorage.getItem(`youtube-subscribed-${id}`) === "true"
@@ -55,10 +109,6 @@ export default function Watch() {
     }
   });
 
-  const video = videos.find(
-    (item) => String(item.id) === String(id)
-  );
-
   // Video ko history mein add karna
   useEffect(() => {
     if (video) {
@@ -76,12 +126,11 @@ export default function Watch() {
 
   // Video actions save karna
   useEffect(() => {
-    localStorage.setItem(`youtube-liked-${id}`, String(liked));
-    localStorage.setItem(`youtube-disliked-${id}`, String(disliked));
-    localStorage.setItem(`youtube-like-count-${id}`, String(likeCount));
-    localStorage.setItem(`youtube-subscribed-${id}`, String(subscribed));
-  }, [id, liked, disliked, likeCount, subscribed]);
-
+    localStorage.setItem(
+      `youtube-subscribed-${id}`,
+      String(subscribed)
+    );
+  }, [id, subscribed]);
   // Video nahi mila
   if (!video) {
     return (
@@ -110,31 +159,49 @@ export default function Watch() {
   }
 
   // Video Like / Unlike
-  function handleLike() {
-    if (liked) {
-      setLiked(false);
-      setLikeCount((count) => Math.max(0, count - 1));
-    } else {
-      setLiked(true);
-      setLikeCount((count) => count + 1);
+  async function handleReaction(reaction) {
+    if (reactionLoading) return;
 
-      if (disliked) {
-        setDisliked(false);
-      }
+    if (
+      !localStorage.getItem("accessToken") &&
+      !localStorage.getItem("refreshToken")
+    ) {
+      setShareMessage("Like ya Dislike karne ke liye login karo.");
+
+      window.setTimeout(() => setShareMessage(""), 3000);
+      return;
     }
-  }
 
-  // Video Dislike
-  function handleDislike() {
-    if (disliked) {
-      setDisliked(false);
-    } else {
-      setDisliked(true);
+    setReactionLoading(true);
 
-      if (liked) {
-        setLiked(false);
-        setLikeCount((count) => Math.max(0, count - 1));
+    try {
+      const response = await axiosClient.post(
+        `videos/${video.id}/reaction/`,
+        {
+          reaction,
+        }
+      );
+
+      setLikesCount(response.data.likes_count);
+      setDislikesCount(response.data.dislikes_count);
+      setUserReaction(response.data.user_reaction);
+
+    } catch (error) {
+      console.error("Reaction failed:", error);
+
+      if (error.response?.status === 401) {
+        setShareMessage("Session expire ho gaya. Dobara login karo.");
+      } else {
+        setShareMessage(
+          error.response?.data?.error ||
+          "Reaction save nahi ho paya. Please try again."
+        );
       }
+
+      window.setTimeout(() => setShareMessage(""), 3000);
+
+    } finally {
+      setReactionLoading(false);
     }
   }
 
@@ -300,6 +367,39 @@ export default function Watch() {
     );
   }
 
+  async function handleVideoPlay() {
+    if (!video) return;
+
+    const currentVideoId = String(video.id);
+
+    // Same page visit mein duplicate view count nahi hoga
+    if (countedViewId.current === currentVideoId) return;
+
+    countedViewId.current = currentVideoId;
+
+    try {
+      const response = await axiosClient.post(
+        `videos/${video.id}/view/`
+      );
+
+      setVideo((previous) => {
+        if (!previous || String(previous.id) !== currentVideoId) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          views: response.data.views_count.toLocaleString("en-IN"),
+        };
+      });
+
+      console.log("View counted:", response.data.views_count);
+    } catch (error) {
+      console.error("View counting failed:", error);
+      countedViewId.current = null;
+    }
+  }
+
   return (
     <div className="app-shell">
       <Navbar />
@@ -323,6 +423,7 @@ export default function Watch() {
                   setVideoLoading(false);
                   setVideoError(false);
                 }}
+                onPlay={handleVideoPlay}
                 onError={() => {
                   setVideoLoading(false);
                   setVideoError(true);
@@ -425,24 +526,26 @@ export default function Watch() {
             <div className="action-buttons">
               <button
                 type="button"
-                className={liked ? "active-action" : ""}
-                onClick={handleLike}
-                aria-pressed={liked}
+                className={userReaction === "like" ? "active-action" : ""}
+                onClick={() => handleReaction("like")}
+                aria-pressed={userReaction === "like"}
+                disabled={reactionLoading}
                 title="Like"
               >
                 <ThumbsUp size={19} />
-                Like {likeCount > 0 && likeCount}
+                Like {likesCount > 0 && likesCount.toLocaleString("en-IN")}
               </button>
 
               <button
                 type="button"
-                className={disliked ? "active-action" : ""}
-                onClick={handleDislike}
-                aria-pressed={disliked}
+                className={userReaction === "dislike" ? "active-action" : ""}
+                onClick={() => handleReaction("dislike")}
+                aria-pressed={userReaction === "dislike"}
+                disabled={reactionLoading}
                 title="Dislike"
               >
                 <ThumbsDown size={19} />
-                Dislike
+                Dislike {dislikesCount > 0 && dislikesCount.toLocaleString("en-IN")}
               </button>
 
               <button type="button" onClick={handleShare}>
@@ -613,7 +716,7 @@ export default function Watch() {
         <aside className="related-videos">
           <h2>Related videos</h2>
 
-          {videos
+          {relatedVideos
             .filter((item) => String(item.id) !== String(video.id))
             .map((item) => (
               <Link
