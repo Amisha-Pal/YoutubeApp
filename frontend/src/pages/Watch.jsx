@@ -44,6 +44,7 @@ export default function Watch() {
 
         const formattedVideo = {
           id: data.id,
+          ownerId: data.owner,
           title: data.title,
           description: data.description,
           channel: data.owner_username,
@@ -83,31 +84,76 @@ export default function Watch() {
   }, [id]);
   const { addToHistory } = useHistory();
 
+  useEffect(() => {
+    if (!video?.ownerId) return;
+
+    async function fetchSubscription() {
+      try {
+        const response = await axiosClient.get(
+          `videos/channels/${video.ownerId}/subscribe/`
+        );
+
+        setSubscribed(response.data.is_subscribed);
+        setSubscribersCount(response.data.subscribers_count);
+      } catch (error) {
+        console.error("Subscription fetch failed:", error);
+      }
+    }
+
+    fetchSubscription();
+  }, [video?.ownerId]);
+
+  async function handleSubscribe() {
+    if (!localStorage.getItem("accessToken")) {
+      setShareMessage("Subscribe karne ke liye pehle login karo.");
+      return;
+    }
+
+    if (!video?.ownerId) return;
+
+    try {
+      setSubscriptionLoading(true);
+
+      const endpoint = `videos/channels/${video.ownerId}/subscribe/`;
+
+      const response = subscribed
+        ? await axiosClient.delete(endpoint)
+        : await axiosClient.post(endpoint);
+
+      setSubscribed(response.data.is_subscribed);
+      setSubscribersCount(response.data.subscribers_count);
+    } catch (error) {
+      console.error("Subscription failed:", error);
+      setShareMessage("Subscription update nahi ho paya.");
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  }
+
   const [userReaction, setUserReaction] = useState(null);
   const [likesCount, setLikesCount] = useState(0);
   const [dislikesCount, setDislikesCount] = useState(0);
   const [reactionLoading, setReactionLoading] = useState(false);
 
-  const [subscribed, setSubscribed] = useState(
-    () => localStorage.getItem(`youtube-subscribed-${id}`) === "true"
-  );
+  const [subscribed, setSubscribed] = useState(false);
+
+  const [subscribersCount, setSubscribersCount] = useState(0);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   const { addToWatchLater, removeFromWatchLater, isInWatchLater, } = useWatchLater();
 
   const [shareMessage, setShareMessage] = useState("");
   const [comment, setComment] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editCommentText, setEditCommentText] = useState("");
   const [replyInputs, setReplyInputs] = useState({});
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
 
-  const [comments, setComments] = useState(() => {
-    try {
-      const savedComments = localStorage.getItem(`youtube-comments-${id}`);
-      return savedComments ? JSON.parse(savedComments) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentError, setCommentError] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
   // Video ko history mein add karna
   useEffect(() => {
@@ -118,19 +164,41 @@ export default function Watch() {
 
   // Comments, replies aur unke likes save karna
   useEffect(() => {
-    localStorage.setItem(
-      `youtube-comments-${id}`,
-      JSON.stringify(comments)
-    );
-  }, [id, comments]);
+    let isMounted = true;
 
-  // Video actions save karna
-  useEffect(() => {
-    localStorage.setItem(
-      `youtube-subscribed-${id}`,
-      String(subscribed)
-    );
-  }, [id, subscribed]);
+    async function fetchComments() {
+      try {
+        setCommentsLoading(true);
+        setCommentError("");
+
+        const response = await axiosClient.get(
+          `videos/${id}/comments/`
+        );
+
+        if (isMounted) {
+          const data = response.data;
+          setComments(Array.isArray(data) ? data : data.results || []);
+        }
+      } catch (error) {
+        console.error("Comments fetch failed:", error);
+
+        if (isMounted) {
+          setCommentError("Comments load nahi ho paye.");
+        }
+      } finally {
+        if (isMounted) {
+          setCommentsLoading(false);
+        }
+      }
+    }
+
+    fetchComments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
   // Video nahi mila
   if (!video) {
     return (
@@ -253,71 +321,137 @@ export default function Watch() {
   }
 
   // Naya comment add karna
-  function handleCommentSubmit(event) {
+  async function handleCommentSubmit(event) {
     event.preventDefault();
 
     const text = comment.trim();
-    if (!text) return;
 
-    setComments((previous) => [
-      {
-        id: Date.now(),
-        text,
-        liked: false,
-        likes: 0,
-        replies: [],
-      },
-      ...previous,
-    ]);
+    if (!text || commentSubmitting) return;
 
-    setComment("");
+    if (!localStorage.getItem("accessToken")) {
+      setShareMessage("Comment karne ke liye login karo.");
+      window.setTimeout(() => setShareMessage(""), 3000);
+      return;
+    }
+
+    try {
+      setCommentSubmitting(true);
+      setCommentError("");
+
+      const response = await axiosClient.post(
+        `videos/${video.id}/comments/`,
+        {
+          content: text,
+          parent: null,
+        }
+      );
+
+      setComments((previous) => [
+        response.data,
+        ...previous,
+      ]);
+
+      setComment("");
+    } catch (error) {
+      console.error("Comment submission failed:", error);
+
+      setCommentError(
+        error.response?.data?.detail ||
+        error.response?.data?.content?.[0] ||
+        "Comment save nahi ho paya. Please try again."
+      );
+    } finally {
+      setCommentSubmitting(false);
+    }
   }
 
-  // Comment Like / Unlike
-  function handleCommentLike(commentId) {
-    setComments((previous) =>
-      previous.map((item) => {
-        if (item.id !== commentId) return item;
+  // Comment / Reply Like and Dislike
+  async function handleCommentReaction(commentId, reactionType) {
+    if (!localStorage.getItem("accessToken")) {
+      setShareMessage("Reaction dene ke liye login karo.");
+      window.setTimeout(() => setShareMessage(""), 3000);
+      return;
+    }
 
-        const wasLiked = Boolean(item.liked);
+    try {
+      const response = await axiosClient.post(
+        `videos/comments/${commentId}/reaction/`,
+        {
+          reaction: reactionType,
+        }
+      );
 
-        return {
-          ...item,
-          liked: !wasLiked,
-          likes: Math.max(
-            0,
-            (item.likes || 0) + (wasLiked ? -1 : 1)
-          ),
-        };
-      })
-    );
+      const updatedReaction = response.data;
+
+      setComments((previous) =>
+        previous.map((item) =>
+          item.id === commentId
+            ? {
+              ...item,
+              likes_count: updatedReaction.likes_count,
+              dislikes_count: updatedReaction.dislikes_count,
+              user_reaction: updatedReaction.user_reaction,
+            }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Comment reaction failed:", error);
+
+      setCommentError(
+        error.response?.data?.detail ||
+        error.response?.data?.error ||
+        "Reaction save nahi ho paya. Please try again."
+      );
+    }
   }
 
-  // Reply Like / Unlike
-  function handleReplyLike(commentId, replyId) {
-    setComments((previous) =>
-      previous.map((item) => {
-        if (item.id !== commentId) return item;
+  // Reply Like and Dislike
+  async function handleReplyReaction(commentId, replyId, reactionType) {
+    if (!localStorage.getItem("accessToken")) {
+      setShareMessage("Reaction dene ke liye login karo.");
+      window.setTimeout(() => setShareMessage(""), 3000);
+      return;
+    }
 
-        return {
-          ...item,
-          replies: (item.replies || []).map((reply) => {
-            if (reply.id !== replyId) return reply;
+    try {
+      const response = await axiosClient.post(
+        `videos/comments/${replyId}/reaction/`,
+        {
+          reaction: reactionType,
+        }
+      );
 
-            const wasLiked = Boolean(reply.liked);
+      const updatedReaction = response.data;
 
-            return {
-              ...reply,
-              liked: !wasLiked,
-              likes: Math.max(
-                0,
-                (reply.likes || 0) + (wasLiked ? -1 : 1)
+      setComments((previous) =>
+        previous.map((item) =>
+          item.id === commentId
+            ? {
+              ...item,
+              replies: (item.replies || []).map((reply) =>
+                reply.id === replyId
+                  ? {
+                    ...reply,
+                    likes_count: updatedReaction.likes_count,
+                    dislikes_count: updatedReaction.dislikes_count,
+                    user_reaction: updatedReaction.user_reaction,
+                  }
+                  : reply
               ),
-            };
-          }),
-        };
-      })
-    );
+            }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Reply reaction failed:", error);
+
+      setCommentError(
+        error.response?.data?.detail ||
+        error.response?.data?.error ||
+        "Reply reaction save nahi ho paya. Please try again."
+      );
+    }
   }
 
   // Reply input update karna
@@ -329,42 +463,136 @@ export default function Watch() {
   }
 
   // Comment ka reply add karna
-  function handleReplySubmit(event, commentId) {
+  async function handleReplySubmit(event, commentId) {
     event.preventDefault();
 
     const text = (replyInputs[commentId] || "").trim();
+
     if (!text) return;
 
-    setComments((previous) =>
-      previous.map((item) =>
-        item.id === commentId
-          ? {
-            ...item,
-            replies: [
-              ...(item.replies || []),
-              {
-                id: `${Date.now()}-${Math.random()}`,
-                text,
-                liked: false,
-                likes: 0,
-              },
-            ],
-          }
-          : item
-      )
-    );
+    if (!localStorage.getItem("accessToken")) {
+      setShareMessage("Reply karne ke liye login karo.");
+      window.setTimeout(() => setShareMessage(""), 3000);
+      return;
+    }
 
-    setReplyInputs((previous) => ({
-      ...previous,
-      [commentId]: "",
-    }));
+    try {
+      setCommentError("");
+
+      const response = await axiosClient.post(
+        `videos/${video.id}/comments/`,
+        {
+          content: text,
+          parent: commentId,
+        }
+      );
+
+      setComments((previous) =>
+        previous.map((item) =>
+          item.id === commentId
+            ? {
+              ...item,
+              replies: [...(item.replies || []), response.data],
+            }
+            : item
+        )
+      );
+
+      setReplyInputs((previous) => ({
+        ...previous,
+        [commentId]: "",
+      }));
+
+    } catch (error) {
+      console.error("Reply submission failed:", error);
+
+      const data = error.response?.data;
+
+      const message =
+        data?.detail ||
+        data?.parent?.[0] ||
+        data?.content?.[0] ||
+        (data ? JSON.stringify(data) : error.message);
+
+      setCommentError(`Reply failed: ${message}`);
+    }
   }
 
   // Comment delete karna
-  function handleDeleteComment(commentId) {
-    setComments((previous) =>
-      previous.filter((item) => item.id !== commentId)
+  // Backend se comment delete karna
+  async function handleDeleteComment(commentId) {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this comment?"
     );
+
+    if (!confirmDelete) return;
+
+    try {
+      setCommentError("");
+
+      await axiosClient.delete(
+        `videos/comments/${commentId}/`
+      );
+
+      setComments((previous) =>
+        previous.filter((item) => item.id !== commentId)
+      );
+
+    } catch (error) {
+      console.error("Comment deletion failed:", error);
+
+      setCommentError(
+        error.response?.data?.detail ||
+        "Comment delete nahi ho paya."
+      );
+    }
+  }
+
+  // Comment edit karna
+  function handleEditComment(item) {
+    setEditingCommentId(item.id);
+    setEditCommentText(item.content);
+  }
+
+  // Updated comment backend mein save karna
+  async function handleUpdateComment(event) {
+    event.preventDefault();
+
+    const text = editCommentText.trim();
+
+    if (!text || !editingCommentId) return;
+
+    try {
+      setCommentError("");
+
+      const response = await axiosClient.patch(
+        `videos/comments/${editingCommentId}/`,
+        {
+          content: text,
+        }
+      );
+
+      setComments((previous) =>
+        previous.map((item) =>
+          item.id === editingCommentId
+            ? { ...item, ...response.data }
+            : item
+        )
+      );
+
+      setEditingCommentId(null);
+      setEditCommentText("");
+
+    } catch (error) {
+      console.error("Comment update failed:", error);
+      console.error("Server response:", error.response?.data);
+
+      setCommentError(
+        error.response?.data?.detail ||
+        error.response?.data?.content?.[0] ||
+        "Comment update nahi ho paya."
+      );
+    }
   }
 
   async function handleVideoPlay() {
@@ -503,24 +731,52 @@ export default function Watch() {
 
               <div>
                 <h3>{video.channel}</h3>
-                <p>Sample channel</p>
+                <p>
+                  {subscribersCount.toLocaleString("en-IN")} subscribers
+                </p>
               </div>
 
-              <button
-                className={`subscribe-button ${subscribed ? "subscribed" : ""
-                  }`}
-                type="button"
-                onClick={() => setSubscribed((previous) => !previous)}
-              >
-                {subscribed ? (
-                  <>
-                    <Check size={16} />
-                    Subscribed
-                  </>
-                ) : (
-                  "Subscribe"
+              {(() => {
+                const token = localStorage.getItem("accessToken");
+
+                if (!token) return true;
+
+                try {
+                  const payload = token
+                    .split(".")[1]
+                    .replace(/-/g, "+")
+                    .replace(/_/g, "/");
+
+                  const paddedPayload = payload.padEnd(
+                    Math.ceil(payload.length / 4) * 4,
+                    "="
+                  );
+
+                  const currentUserId = JSON.parse(
+                    atob(paddedPayload)
+                  ).user_id;
+
+                  return String(video.ownerId) !== String(currentUserId);
+                } catch {
+                  return true;
+                }
+              })() && (
+                  <button
+                    className={`subscribe-button ${subscribed ? "subscribed" : ""}`}
+                    type="button"
+                    onClick={handleSubscribe}
+                    disabled={subscriptionLoading}
+                  >
+                    {subscribed ? (
+                      <>
+                        <Check size={16} />
+                        Subscribed
+                      </>
+                    ) : (
+                      "Subscribe"
+                    )}
+                  </button>
                 )}
-              </button>
             </div>
 
             <div className="action-buttons">
@@ -596,6 +852,14 @@ export default function Watch() {
           <section className="comments-section">
             <h2>Comments ({comments.length})</h2>
 
+            <h2>Comments ({comments.length})</h2>
+
+            {commentsLoading && <p>Comments loading...</p>}
+
+            {commentError && (
+              <p role="alert">{commentError}</p>
+            )}
+
             <form className="add-comment" onSubmit={handleCommentSubmit}>
               <CircleUserRound size={30} />
 
@@ -607,8 +871,11 @@ export default function Watch() {
                 onChange={(event) => setComment(event.target.value)}
               />
 
-              <button type="submit" disabled={!comment.trim()}>
-                Comment
+              <button
+                type="submit"
+                disabled={!comment.trim() || commentSubmitting}
+              >
+                {commentSubmitting ? "Posting..." : "Comment"}
               </button>
             </form>
 
@@ -623,20 +890,74 @@ export default function Watch() {
                     <CircleUserRound size={28} />
 
                     <div className="comment-content">
-                      <strong>You</strong>
-                      <p>{item.text}</p>
+                      <strong>{item.username}</strong>
+
+                      {editingCommentId === item.id ? (
+                        <form onSubmit={handleUpdateComment}>
+                          <input
+                            type="text"
+                            value={editCommentText}
+                            onChange={(event) =>
+                              setEditCommentText(event.target.value)
+                            }
+                            maxLength={2000}
+                          />
+
+                          <button type="submit" disabled={!editCommentText.trim()}>
+                            Save
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(null);
+                              setEditCommentText("");
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      ) : (
+                        <>
+                          <p>{item.content}</p>
+
+                          <button
+                            type="button"
+                            onClick={() => handleEditComment(item)}
+                          >
+                            Edit
+                          </button>
+                        </>
+                      )}
 
                       {/* Comment Like button */}
                       <button
                         type="button"
-                        onClick={() => handleCommentLike(item.id)}
-                        aria-pressed={Boolean(item.liked)}
-                        className={item.liked ? "active-action" : ""}
+                        onClick={() => handleCommentReaction(item.id, "like")}
+                        aria-pressed={item.user_reaction === "like"}
+                        className={
+                          item.user_reaction === "like" ? "active-action" : ""
+                        }
                         title="Like comment"
                       >
                         <ThumbsUp size={15} />
-                        {item.likes || 0}
+                        {item.likes_count || 0}
                       </button>
+
+                      {/* Comment Dislike button */}
+                      <button
+                        type="button"
+                        onClick={() => handleCommentReaction(item.id, "dislike")}
+                        aria-pressed={item.user_reaction === "dislike"}
+                        className={
+                          item.user_reaction === "dislike" ? "active-action" : ""
+                        }
+                        title="Dislike comment"
+                      >
+                        <ThumbsDown size={15} />
+                        {item.dislikes_count || 0}
+                      </button>
+
 
                       {/* Reply form */}
                       <form
@@ -673,23 +994,39 @@ export default function Watch() {
                             <CircleUserRound size={22} />
 
                             <div>
-                              <strong>You · Reply</strong>
-                              <p>{reply.text}</p>
+                              <strong>{reply.username} · Reply</strong>
+                              <p>{reply.content}</p>
 
                               {/* Reply Like button */}
                               <button
                                 type="button"
                                 onClick={() =>
-                                  handleReplyLike(item.id, reply.id)
+                                  handleReplyReaction(item.id, reply.id, "like")
                                 }
-                                aria-pressed={Boolean(reply.liked)}
+                                aria-pressed={reply.user_reaction === "like"}
                                 className={
-                                  reply.liked ? "active-action" : ""
+                                  reply.user_reaction === "like" ? "active-action" : ""
                                 }
                                 title="Like reply"
                               >
                                 <ThumbsUp size={14} />
-                                {reply.likes || 0}
+                                {reply.likes_count || 0}
+                              </button>
+
+                              {/* Reply Dislike button */}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleReplyReaction(item.id, reply.id, "dislike")
+                                }
+                                aria-pressed={reply.user_reaction === "dislike"}
+                                className={
+                                  reply.user_reaction === "dislike" ? "active-action" : ""
+                                }
+                                title="Dislike reply"
+                              >
+                                <ThumbsDown size={14} />
+                                {reply.dislikes_count || 0}
                               </button>
                             </div>
                           </div>

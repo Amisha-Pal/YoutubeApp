@@ -300,7 +300,7 @@ export default function UploadModal({ isOpen, onClose }) {
               </button>
 
               <img
-                src={thumbnailPreview}
+                src={thumbnailPreview || null}
                 alt="Selected thumbnail preview"
                 style={{
                   width: "200px",

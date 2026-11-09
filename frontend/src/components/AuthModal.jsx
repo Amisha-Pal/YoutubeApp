@@ -55,6 +55,7 @@ export default function AuthModal({ isOpen, onClose }) {
             password,
           }
         );
+        console.log("LOGIN RESPONSE:", response.data);
 
         setMessage(
           response.data.message || "Account created successfully."
@@ -72,6 +73,11 @@ export default function AuthModal({ isOpen, onClose }) {
             password,
           }
         );
+
+        console.log("LOGIN API RESPONSE:", {
+          access: !!response.data.access,
+          refresh: !!response.data.refresh,
+        });
 
         localStorage.setItem("accessToken", response.data.access);
         localStorage.setItem("refreshToken", response.data.refresh);

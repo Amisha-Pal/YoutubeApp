@@ -40,18 +40,33 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("latest");
 
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let isCancelled = false;
+
     async function fetchVideos() {
       try {
         setLoading(true);
         setError("");
 
-        const response = await axiosClient.get("videos/");
+        const query = searchQuery.trim();
+
+        const response = await axiosClient.get("videos/", {
+          params: {
+            ...(query ? { search: query } : {}),
+            ...(activeCategory !== "All"
+              ? { category: activeCategory }
+              : {}),
+            sort: sortBy,
+          },
+        });
+
+        if (isCancelled) return;
 
         const formattedVideos = response.data.map((video) => ({
           id: video.id,
@@ -71,32 +86,33 @@ export default function Home() {
 
         setVideos(formattedVideos);
       } catch (err) {
-        console.error("Failed to fetch videos:", err);
-        setError("Videos load nahi ho paayi. Please try again.");
+        if (!isCancelled) {
+          console.error("Failed to fetch videos:", err);
+          setError("Videos load nahi ho paayi. Please try again.");
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchVideos();
-  }, []);
+    const timer = setTimeout(fetchVideos, 300);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, activeCategory, sortBy]);
 
   const filteredVideos = useMemo(() => {
     return videos.filter((video) => {
-      const matchesCategory =
+      return (
         activeCategory === "All" ||
-        video.category === activeCategory;
-
-      const query = searchQuery.trim().toLowerCase();
-
-      const matchesSearch =
-        !query ||
-        video.title.toLowerCase().includes(query) ||
-        video.channel.toLowerCase().includes(query);
-
-      return matchesCategory && matchesSearch;
+        video.category === activeCategory
+      );
     });
-  }, [videos, activeCategory, searchQuery]);
+  }, [videos, activeCategory]);
 
   return (
     <div className="app-shell">
@@ -117,6 +133,20 @@ export default function Home() {
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
           />
+
+          <div className="sort-container">
+            <label htmlFor="video-sort">Sort by:</label>
+
+            <select
+              id="video-sort"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <option value="latest">Latest</option>
+              <option value="popular">Most Popular</option>
+              <option value="oldest">Oldest</option>
+            </select>
+          </div>
 
           <section className="video-grid-section">
             <div className="video-grid">
