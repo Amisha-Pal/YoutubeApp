@@ -7,6 +7,7 @@ import { categories } from "../features/videos/videoData";
 import { formatVideo } from "../utils/format";
 import { isLoggedIn } from "../utils/auth";
 
+const PAGE_SIZE = 50;
 const EDITABLE_CATEGORIES = categories.filter((item) => item !== "All");
 
 function EditVideoForm({ video, onSaved, onCancel }) {
@@ -82,16 +83,19 @@ export default function YourVideos() {
   const [loading, setLoading] = useState(isLoggedIn());
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [nextPage, setNextPage] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn()) return undefined;
     let cancelled = false;
     axiosClient
-      .get("videos/mine/", { params: { page_size: 100 } })
+      .get("videos/mine/", { params: { page_size: PAGE_SIZE, page: 1 } })
       .then((response) => {
         if (cancelled) return;
         const data = response.data;
         setVideos((data.results || data).map(formatVideo));
+        setNextPage(data.next ? 2 : null);
       })
       .catch(() => !cancelled && setError("Your videos could not be loaded."))
       .finally(() => !cancelled && setLoading(false));
@@ -99,6 +103,24 @@ export default function YourVideos() {
       cancelled = true;
     };
   }, []);
+
+  async function loadMore() {
+    try {
+      setLoadingMore(true);
+      const response = await axiosClient.get("videos/mine/", {
+        params: { page_size: PAGE_SIZE, page: nextPage },
+      });
+      setVideos((previous) => [
+        ...previous,
+        ...response.data.results.map(formatVideo),
+      ]);
+      setNextPage(response.data.next ? nextPage + 1 : null);
+    } catch {
+      setError("More videos could not be loaded.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function handleDelete(video) {
     if (!window.confirm(`Delete "${video.title}"? This cannot be undone.`)) return;
@@ -174,6 +196,13 @@ export default function YourVideos() {
                     )}
                   </article>
                 ))}
+                {nextPage && (
+                  <div className="load-more-container">
+                    <button type="button" className="load-more-btn" onClick={loadMore} disabled={loadingMore}>
+                      {loadingMore ? "Loading..." : "Load More"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>
