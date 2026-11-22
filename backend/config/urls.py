@@ -10,7 +10,7 @@ urlpatterns = [
     path("api/videos/", include("videos.urls")),
 ]
 
-if settings.DEBUG:
+if settings.DEBUG or settings.SERVE_MEDIA:
     urlpatterns += [
         re_path(
             r"^media/(?P<path>.*)$",

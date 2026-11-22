@@ -21,12 +21,20 @@ from .views import (
     PlaylistReorderView,
     ChannelSearchView,
     NotificationDeleteView,
+    MyVideosView,
+    LikedVideosView,
+    SubscriptionFeedView,
+    SubscribedChannelsView,
 )
 
 app_name = "videos"
 
 urlpatterns = [
     path("", VideoListCreateView.as_view(), name="video-list-create"),
+    path("mine/", MyVideosView.as_view(), name="my-videos"),
+    path("liked/", LikedVideosView.as_view(), name="liked-videos"),
+    path("subscriptions/feed/", SubscriptionFeedView.as_view(), name="subscription-feed"),
+    path("subscriptions/", SubscribedChannelsView.as_view(), name="subscribed-channels"),
     path("<int:video_id>/", VideoDetailView.as_view(), name="video-detail"),
     path("<int:video_id>/view/", VideoViewCountView.as_view(), name="video-view-count"),
     path("<int:video_id>/reaction/", VideoReactionView.as_view(), name="video-reaction"),

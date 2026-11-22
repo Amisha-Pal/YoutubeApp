@@ -135,12 +135,23 @@ class VideoSerializer(serializers.ModelSerializer):
 
         return value
 
+    def get_fields(self):
+        fields = super().get_fields()
+        # The source video cannot be replaced after upload.
+        if self.instance is not None and not isinstance(self.instance, (list, tuple)):
+            fields["video_file"].read_only = True
+        return fields
+
     def get_likes_count(self, obj):
+        if hasattr(obj, "likes_total"):
+            return obj.likes_total
         return obj.reactions.filter(
             reaction=VideoReaction.ReactionType.LIKE
         ).count()
 
     def get_dislikes_count(self, obj):
+        if hasattr(obj, "dislikes_total"):
+            return obj.dislikes_total
         return obj.reactions.filter(
             reaction=VideoReaction.ReactionType.DISLIKE
         ).count()
@@ -150,7 +161,8 @@ class VideoSerializer(serializers.ModelSerializer):
 
         if not request or not request.user.is_authenticated:
             return None
-
+        if hasattr(obj, "current_user_reaction"):
+            return obj.current_user_reaction
         reaction = obj.reactions.filter(
             user=request.user
         ).first()
@@ -207,15 +219,18 @@ class CommentSerializer(serializers.ModelSerializer):
             context=self.context,
         ).data
 
+    # Iterate over .all() so prefetched reactions are reused (no N+1 queries).
     def get_likes_count(self, obj):
-        return obj.reactions.filter(
-            reaction=CommentReaction.ReactionType.LIKE
-        ).count()
+        return sum(
+            1 for r in obj.reactions.all()
+            if r.reaction == CommentReaction.ReactionType.LIKE
+        )
 
     def get_dislikes_count(self, obj):
-        return obj.reactions.filter(
-            reaction=CommentReaction.ReactionType.DISLIKE
-        ).count()
+        return sum(
+            1 for r in obj.reactions.all()
+            if r.reaction == CommentReaction.ReactionType.DISLIKE
+        )
 
     def get_user_reaction(self, obj):
         request = self.context.get("request")
@@ -223,11 +238,10 @@ class CommentSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return None
 
-        reaction = obj.reactions.filter(
-            user=request.user
-        ).first()
-
-        return reaction.reaction if reaction else None
+        for reaction in obj.reactions.all():
+            if reaction.user_id == request.user.id:
+                return reaction.reaction
+        return None
 
     def validate_content(self, value):
         value = value.strip()
@@ -325,6 +339,8 @@ class ChannelProfileSerializer(serializers.ModelSerializer):
         ]
 
     def get_subscribers_count(self, obj):
+        if hasattr(obj, "subscribers_total"):
+            return obj.subscribers_total
         return obj.subscribers.count()
 
     def get_videos_count(self, obj):
@@ -459,7 +475,7 @@ class PlaylistSerializer(serializers.ModelSerializer):
         ]
 
     def get_videos_count(self, obj):
-        return obj.videos.count()
+        return len(obj.playlist_items.all())
 
     def validate_title(self, value):
         value = value.strip()
