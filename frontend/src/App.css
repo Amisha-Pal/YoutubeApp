@@ -4899,25 +4899,26 @@ a {
 .your-video-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; }
 .your-video-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .your-video-title { font-weight: 600; font-size: 1.05rem; color: inherit; text-decoration: none; }
-.your-video-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #606060; font-size: 0.85rem; margin: 6px 0; }
-.your-video-description { color: #606060; font-size: 0.9rem; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.your-video-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #aaaaaa; font-size: 0.85rem; margin: 6px 0; }
+.your-video-description { color: #aaaaaa; font-size: 0.9rem; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .your-video-actions { display: flex; gap: 6px; }
-.your-video-actions button, .your-video-edit button, .settings-card button { border: 1px solid #ddd; background: #f2f2f2; border-radius: 18px; padding: 8px 14px; cursor: pointer; }
+.your-video-actions button, .your-video-edit button, .settings-card button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #3f3f3f; background: #272727; color: #f1f1f1; border-radius: 18px; padding: 8px 14px; cursor: pointer; }
+.your-video-actions button:hover, .your-video-edit button:hover, .settings-card button:hover { background: #3f3f3f; }
 .your-video-edit { display: flex; flex-direction: column; gap: 10px; }
 .your-video-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; flex: 1; }
-.your-video-edit input, .your-video-edit textarea, .your-video-edit select { padding: 8px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+.your-video-edit input, .your-video-edit textarea, .your-video-edit select { padding: 8px; border: 1px solid #3f3f3f; border-radius: 8px; font: inherit; background: #121212; color: #f1f1f1; }
 .your-video-edit-row, .your-video-edit-actions { display: flex; gap: 12px; }
 .your-video-edit-actions { justify-content: flex-end; }
-.status-badge { text-transform: capitalize; background: #eee; border-radius: 10px; padding: 2px 8px; font-size: 0.75rem; }
-.status-published { background: #e3f6e8; color: #137333; }
-.status-processing { background: #fff4e0; color: #9a5b00; }
-.status-failed { background: #fde7e7; color: #b3261e; }
-.form-error { color: #b3261e; }
+.status-badge { text-transform: capitalize; background: #303030; color: #f1f1f1; border-radius: 10px; padding: 2px 8px; font-size: 0.75rem; }
+.status-published { background: #0f3d22; color: #81e6a1; }
+.status-processing { background: #4a3500; color: #ffd27a; }
+.status-failed { background: #4d1414; color: #ff9b9b; }
+.form-error { color: #ff8a80; }
 .settings-page { max-width: 760px; }
-.settings-card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.settings-card { border: 1px solid #303030; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .settings-card h2 { font-size: 1.1rem; margin: 0; }
 .settings-toggle { display: flex; align-items: center; gap: 8px; }
-.settings-hint, .settings-message { color: #606060; font-size: 0.9rem; }
+.settings-hint, .settings-message { color: #aaaaaa; font-size: 0.9rem; }
 .shortcut-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 0; }
 .shortcut-list div { display: flex; gap: 10px; }
 .shortcut-list dt { font-weight: 600; min-width: 90px; }
@@ -4928,4 +4929,93 @@ a {
   .feed-page { padding: 16px 12px; }
   .your-video-row { grid-template-columns: 1fr; }
   .your-video-edit-row { flex-direction: column; }
+}
+
+/* ---- Watch page layout ---- */
+.watch-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 24px;
+  max-width: 1750px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.watch-main { min-width: 0; }
+.player-container { position: relative; width: 100%; background: #000; border-radius: 12px; overflow: hidden; }
+.player-container video { display: block; width: 100%; max-height: 75vh; aspect-ratio: 16 / 9; background: #000; }
+.watch-title { font-size: 1.3rem; font-weight: 600; margin: 12px 0 8px; overflow-wrap: anywhere; }
+.watch-video-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.watch-channel { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.watch-channel img { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; object-fit: cover; }
+.watch-channel h3 { margin: 0; font-size: 1rem; }
+.watch-channel p { margin: 2px 0 0; color: #aaaaaa; font-size: 0.8rem; }
+.watch-channel a { color: inherit; text-decoration: none; }
+.watch-channel .subscribe-button { margin-left: 12px; border: none; border-radius: 18px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+.action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-buttons button { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 18px; padding: 8px 14px; cursor: pointer; }
+.watch-description { margin-top: 12px; padding: 12px; border-radius: 12px; background: rgba(127, 127, 127, 0.15); font-size: 0.9rem; }
+.watch-description p { margin: 4px 0; }
+.comments-section { margin-top: 24px; }
+.comments-section h2, .comments-section h3 { font-size: 1.15rem; }
+.add-comment, .add-reply { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.add-comment input, .add-reply input { flex: 1; min-width: 0; padding: 8px 4px; background: transparent; color: inherit; border: none; border-bottom: 1px solid #717171; outline: none; }
+.comment-item > img, .comment-item > svg { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; }
+.comment-content { flex: 1; min-width: 0; }
+.comment-content button, .comment-item button { background: transparent; color: inherit; border: none; border-radius: 16px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem; }
+.comment-content button:hover, .comment-item button:hover { background: rgba(127, 127, 127, 0.2); }
+.comment-reply { margin: 10px 0 0 12px; padding-left: 12px; border-left: 2px solid rgba(127, 127, 127, 0.3); }
+.comments-placeholder { color: #aaaaaa; }
+.related-videos { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.related-videos > h2, .related-videos > h3 { font-size: 1.05rem; margin: 0 0 4px; }
+.related-video-card { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 8px; color: inherit; text-decoration: none; }
+.related-video-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; }
+.related-video-card h3 { margin: 0 0 4px; font-size: 0.9rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.related-video-card p { margin: 0; color: #aaaaaa; font-size: 0.78rem; }
+.video-quality-control select { background: transparent; color: inherit; border: 1px solid #555; border-radius: 6px; padding: 4px; }
+.watch-not-found { padding: 120px 24px; text-align: center; }
+@media (max-width: 1100px) {
+  .watch-layout { grid-template-columns: 1fr; padding: 16px; }
+}
+@media (max-width: 600px) {
+  .watch-layout { padding: 0 0 16px; gap: 16px; }
+  .watch-main > *:not(.player-container), .related-videos { padding: 0 12px; }
+  .player-container { border-radius: 0; }
+  .watch-title { font-size: 1.1rem; }
+  .related-video-card { grid-template-columns: 1fr; }
+}
+
+/* ---- Navbar layout (final overrides; keeps search in flow so it never overlaps) ---- */
+.navbar { gap: 16px; }
+.navbar-search-area {
+  position: relative;
+  left: auto;
+  transform: none;
+  flex: 1 1 auto;
+  width: auto;
+  max-width: 720px;
+  min-width: 0;
+  margin: 0 auto;
+}
+.search-form input { min-width: 0; width: 100%; }
+@media (max-width: 1000px) {
+  .create-button span { display: none; }
+  .create-button { padding: 0 10px; }
+}
+@media (max-width: 760px) {
+  .navbar { gap: 8px; padding: 0 8px; }
+  .mic-button, .youtube-logo-text { display: none; }
+  .notification-button { display: inline-flex; }
+  .navbar-right { display: flex; gap: 2px; }
+}
+@media (max-width: 460px) {
+  .navbar-right { display: flex; }
+  .navbar-left .menu-button { padding: 6px; }
+  .create-button { display: none; }
+  .search-button { width: 44px; min-width: 44px; }
+}
+
+.sidebar-section-title { background: transparent; color: inherit; border: none; cursor: pointer; }
+@media (max-width: 760px) {
+  .sidebar.sidebar-mini { display: none; }
+  .sidebar.sidebar-expanded { z-index: 150; box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4); }
 }

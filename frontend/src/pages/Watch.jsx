@@ -1457,10 +1457,14 @@ export default function Watch() {
           {/* Channel aur video actions */}
           <div className="watch-video-actions">
             <div className="watch-channel">
-              <img src={video.avatar} alt={video.channel} />
+              <Link to={`/channel/${video.ownerId}`} aria-label={`${video.channel} channel`}>
+                <img src={video.avatar} alt={video.channel} />
+              </Link>
 
               <div>
-                <h3>{video.channel}</h3>
+                <h3>
+                  <Link to={`/channel/${video.ownerId}`}>{video.channel}</Link>
+                </h3>
                 <p>
                   {subscribersCount.toLocaleString("en-IN")} subscribers
                 </p>

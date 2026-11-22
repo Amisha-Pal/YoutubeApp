@@ -222,6 +222,7 @@ export default function Channel() {
                                             subscribers · {channel.videos_count} videos
                                         </p>
 
+                                        {!isOwnChannel && (
                                         <button
                                             type="button"
                                             className={`subscribe-button ${channel.is_subscribed ? "subscribed" : ""
@@ -241,6 +242,7 @@ export default function Channel() {
                                                     ? "Subscribed"
                                                     : "Subscribe"}
                                         </button>
+                                        )}
 
                                         {isOwnChannel && (
                                             <button

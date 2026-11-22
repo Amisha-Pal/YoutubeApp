@@ -83,7 +83,9 @@ export default function Navbar({
       }
     }
 
-    fetchNotificationPreferences();
+    if (isLoggedIn()) {
+      fetchNotificationPreferences();
+    }
 
     return () => {
       isMounted = false;
@@ -409,7 +411,16 @@ export default function Navbar({
             placeholder="Search"
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
-            onFocus={() => setShowSearchHistory(true)}
+            onFocus={() => {
+              try {
+                setSearchHistory(
+                  JSON.parse(localStorage.getItem("searchHistory") || "[]")
+                );
+              } catch {
+                setSearchHistory([]);
+              }
+              setShowSearchHistory(true);
+            }}
             aria-label="Search videos"
           />
 
