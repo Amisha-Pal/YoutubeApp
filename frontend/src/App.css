@@ -5025,3 +5025,16 @@ a {
   justify-content: center;
   padding: 12px 0 16px;
 }
+
+.watch-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.watch-sidebar-overlay .sidebar {
+  z-index: 150;
+  display: block;
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4);
+}

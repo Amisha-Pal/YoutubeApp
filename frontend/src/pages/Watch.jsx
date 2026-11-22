@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import Navbar from "../components/Navbar";
+import Sidebar from "../components/Sidebar";
 // import { videos as staticVideos } from "../features/videos/videoData";
 import axiosClient from "../api/axiosClient";
 import API_ENDPOINTS from "../api/endpoints";
@@ -297,6 +298,26 @@ export default function Watch() {
 
 
   const [theaterMode, setTheaterMode] = useState(false);
+  // Watch has no persistent sidebar; the menu button opens it as an overlay.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const watchNavigation = (
+    <>
+      <Navbar onMenuClick={() => setSidebarOpen((previous) => !previous)} />
+      {sidebarOpen && (
+        <>
+          <div
+            className="watch-sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="watch-sidebar-overlay">
+            <Sidebar isOpen />
+          </div>
+        </>
+      )}
+    </>
+  );
 
   const handleToggleTheaterMode = () => {
     setTheaterMode((previous) => !previous);
@@ -634,7 +655,7 @@ export default function Watch() {
   if (!video) {
     return (
       <div className="app-shell">
-        <Navbar />
+        {watchNavigation}
 
         <main className="watch-not-found">
           {pageLoading ? (
@@ -1166,7 +1187,7 @@ export default function Watch() {
 
   return (
     <div className="app-shell">
-      <Navbar />
+      {watchNavigation}
 
       <main className={`watch-layout ${theaterMode ? "theater-mode" : ""}`}>
         <section className="watch-main">
