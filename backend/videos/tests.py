@@ -350,6 +350,14 @@ class NotificationTests(BaseTestCase):
         self.assertEqual(len(read["notifications"]), 13)
         self.assertEqual(self.client.get(url, {"page": "x"}).status_code, 400)
 
+        cursor_id = first["notifications"][-1]["id"]
+        Notification.objects.create(
+            recipient=self.owner, sender=self.viewer, notification_type="new_like", message="newer"
+        )
+        after = self.client.get(url, {"before": cursor_id, "page_size": 100}).data
+        self.assertEqual({n["id"] for n in after["notifications"]}, {n["id"] for n in second["notifications"]})
+        self.assertEqual(self.client.get(url, {"before": 999999}).status_code, 400)
+
     def test_cannot_touch_others_notifications(self):
         self.client.force_authenticate(self.viewer)
         self.assertEqual(self.client.post(reverse("videos:notification-mark-read", args=[self.n1.id])).status_code, 404)

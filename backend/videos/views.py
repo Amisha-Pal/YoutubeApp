@@ -762,6 +762,21 @@ class NotificationListView(APIView):
         elif status_filter == "read":
             notifications = notifications.filter(is_read=True)
 
+        # Cursor: return only notifications older than this one, so items that
+        # arrive or change status meanwhile don't shift later pages.
+        before_id = request.query_params.get("before")
+        if before_id:
+            cursor = Notification.objects.filter(
+                recipient=request.user,
+                id=before_id,
+            ).values("created_at", "id").first() if before_id.isdigit() else None
+            if cursor is None:
+                raise ValidationError({"before": "Unknown notification."})
+            notifications = notifications.filter(
+                Q(created_at__lt=cursor["created_at"])
+                | Q(created_at=cursor["created_at"], id__lt=cursor["id"])
+            )
+
         try:
             page = max(1, int(request.query_params.get("page", 1)))
             page_size = int(

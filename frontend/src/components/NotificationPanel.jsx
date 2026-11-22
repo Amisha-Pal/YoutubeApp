@@ -126,10 +126,15 @@ export default function NotificationPanel({
   async function loadMoreNotifications() {
     try {
       setLoadingMore(true);
-      // Derive the page from what is loaded so deletions don't skip items.
-      const page = Math.floor(notifications.length / NOTIFICATION_PAGE_SIZE) + 1;
+      // Page by cursor (oldest loaded item) so realtime arrivals, deletions
+      // and read-state changes don't shift which items come next.
+      const oldest = notifications[notifications.length - 1];
       const response = await axiosClient.get("videos/notifications/", {
-        params: { page, page_size: NOTIFICATION_PAGE_SIZE, status: statusParam },
+        params: {
+          before: oldest?.id,
+          page_size: NOTIFICATION_PAGE_SIZE,
+          status: statusParam,
+        },
       });
       setNotifications((previous) => {
         const seen = new Set(previous.map((item) => item.id));
