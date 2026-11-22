@@ -17,8 +17,15 @@ SECRET_KEY = os.getenv(
 
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
 
-if not DEBUG and SECRET_KEY.startswith("django-insecure"):
-    raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is False.")
+if not DEBUG and (
+    SECRET_KEY.startswith("django-insecure")
+    or SECRET_KEY == "change-me"
+    or len(SECRET_KEY) < 32
+):
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY must be a strong, unique value (32+ chars) "
+        "when DJANGO_DEBUG is False."
+    )
 
 
 def env_list(name, default):
