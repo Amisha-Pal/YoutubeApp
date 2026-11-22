@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, UploadCloud, FileVideo } from "lucide-react";
 import axiosClient from "../api/axiosClient";
 import API_ENDPOINTS from "../api/endpoints";
@@ -11,34 +11,29 @@ export default function UploadModal({ isOpen, onClose }) {
   const [visibility, setVisibility] = useState("public");
   const [selectedFile, setSelectedFile] = useState(null);
   const [thumbnail, setThumbnail] = useState(null);
-  const [videoPreview, setVideoPreview] = useState("");
-  const [thumbnailPreview, setThumbnailPreview] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (!selectedFile) {
-      setVideoPreview("");
-      return;
-    }
-
-    const previewUrl = URL.createObjectURL(selectedFile);
-    setVideoPreview(previewUrl);
-
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [selectedFile]);
+  const videoPreview = useMemo(
+    () => (selectedFile ? URL.createObjectURL(selectedFile) : ""),
+    [selectedFile]
+  );
+  const thumbnailPreview = useMemo(
+    () => (thumbnail ? URL.createObjectURL(thumbnail) : ""),
+    [thumbnail]
+  );
 
   useEffect(() => {
-    if (!thumbnail) {
-      setThumbnailPreview("");
-      return;
-    }
+    return () => {
+      if (videoPreview) URL.revokeObjectURL(videoPreview);
+    };
+  }, [videoPreview]);
 
-    const previewUrl = URL.createObjectURL(thumbnail);
-    setThumbnailPreview(previewUrl);
-
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [thumbnail]);
+  useEffect(() => {
+    return () => {
+      if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
+    };
+  }, [thumbnailPreview]);
 
   if (!isOpen) return null;
 
@@ -102,10 +97,10 @@ export default function UploadModal({ isOpen, onClose }) {
         return;
       }
 
-      const MAX_THUMBNAIL_SIZE = 2 * 1024 * 1024;
+      const MAX_THUMBNAIL_SIZE = 5 * 1024 * 1024;
 
       if (thumbnail.size > MAX_THUMBNAIL_SIZE) {
-        setMessage("Thumbnail size 2 MB se kam honi chahiye.");
+        setMessage("Thumbnail size 5 MB se kam honi chahiye.");
         return;
       }
     }
@@ -125,14 +120,13 @@ export default function UploadModal({ isOpen, onClose }) {
     setLoading(true);
 
     try {
-      const response = await axiosClient.post(
+      await axiosClient.post(
         API_ENDPOINTS.VIDEOS.UPLOAD,
         formData
       );
 
-      console.log("Video uploaded successfully:", response.data);
 
-      alert("Video uploaded successfully!");
+      alert("Video uploaded! It will appear in Your videos while it finishes processing.");
 
       resetForm();
       onClose();

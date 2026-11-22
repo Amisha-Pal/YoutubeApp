@@ -70,6 +70,9 @@ class VideoListTests(BaseTestCase):
         self.assertEqual(len(results(self.client.get(url, {"category": "Music"}))), 1)
         popular = results(self.client.get(url, {"sort": "popular"}))
         self.assertEqual(popular[0]["title"], "Guitar lesson")
+        make_video(self.owner, "Quick clip", duration=30)
+        shorts = results(self.client.get(url, {"duration": "short"}))
+        self.assertEqual([v["title"] for v in shorts], ["Quick clip"])
         trending = results(self.client.get(url, {"sort": "trending"}))
         self.assertEqual(trending[0]["title"], "Guitar lesson")
 

@@ -152,7 +152,10 @@ class VideoListCreateView(generics.ListCreateAPIView):
                 # Filter videos by duration
         duration_filter = self.request.query_params.get("duration", "").strip()
 
-        if duration_filter == "under_4":
+        if duration_filter == "short":
+            queryset = queryset.filter(duration__gt=0, duration__lte=60)
+
+        elif duration_filter == "under_4":
             queryset = queryset.filter(duration__lt=240)
 
         elif duration_filter == "4_to_20":

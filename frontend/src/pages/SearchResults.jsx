@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import VideoCard from "../components/VideoCard";
@@ -71,12 +71,14 @@ export default function SearchResults() {
     const [searchParams] = useSearchParams();
     const query = searchParams.get("q") || "";
 
-    const navigate = useNavigate();
     const [searchInput, setSearchInput] = useState(query);
+    const [previousQuery, setPreviousQuery] = useState(query);
 
-    useEffect(() => {
+    // Keep the local search box in sync when the URL query changes.
+    if (query !== previousQuery) {
+        setPreviousQuery(query);
         setSearchInput(query);
-    }, [query]);
+    }
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeCategory, setActiveCategory] = useState("All");

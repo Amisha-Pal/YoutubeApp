@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -77,15 +77,16 @@ export default function NotificationPanel({
   const [notifications, setNotifications] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // Re-render every minute so relative times ("5 min ago") stay fresh.
+  const [, setClockTick] = useState(0);
   const [error, setError] = useState("");
 
-  async function fetchNotifications() {
+  const fetchNotifications = useCallback(async () => {
     try {
-      setLoading(true);
-      setError("");
-
       const response = await axiosClient.get("videos/notifications/");
+
+      setError("");
 
       setNotifications(response.data.notifications || []);
       setUnreadCount(response.data.unread_count || 0);
@@ -96,11 +97,11 @@ export default function NotificationPanel({
     } finally {
       setLoading(false);
     }
-  }
+  }, [onUnreadCountChange]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setCurrentTime(Date.now());
+      setClockTick((tick) => tick + 1);
     }, 60000);
 
     return () => window.clearInterval(timer);
@@ -109,16 +110,17 @@ export default function NotificationPanel({
   useEffect(() => {
     if (!isOpen) return;
 
-    fetchNotifications();
+    const initialTimer = window.setTimeout(fetchNotifications, 0);
 
     const intervalId = window.setInterval(() => {
       fetchNotifications();
     }, 15000);
 
     return () => {
+      window.clearTimeout(initialTimer);
       window.clearInterval(intervalId);
     };
-  }, [isOpen]);
+  }, [isOpen, fetchNotifications]);
 
   useEffect(() => {
     function handleNewNotification(event) {
@@ -151,9 +153,8 @@ export default function NotificationPanel({
         handleNewNotification
       );
     };
-  }, []);
+  }, [onUnreadCountChange]);
 
-  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const filteredNotifications = notifications.filter((notification) => {
     if (activeFilter === "unread") {

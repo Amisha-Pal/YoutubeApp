@@ -130,9 +130,10 @@ export default function Channel() {
         try {
             setSubscriptionLoading(true);
 
-            const response = await axiosClient.post(
-                `videos/channels/${channelId}/subscribe/`
-            );
+            const endpoint = `videos/channels/${channelId}/subscribe/`;
+            const response = channel?.is_subscribed
+                ? await axiosClient.delete(endpoint)
+                : await axiosClient.post(endpoint);
 
             setChannel((previous) => ({
                 ...previous,

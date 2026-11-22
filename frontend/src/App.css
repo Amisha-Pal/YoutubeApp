@@ -4886,3 +4886,46 @@ a {
   outline: 2px solid #fff;
   outline-offset: 3px;
 }
+
+/* ---- Feed / management pages ---- */
+.feed-page { padding: 24px; max-width: 1600px; margin: 0 auto; }
+.feed-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.feed-header h1 { font-size: 1.6rem; margin: 0; }
+.subscribed-channels { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 16px; }
+.subscribed-channel { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; color: inherit; text-decoration: none; font-size: 0.85rem; }
+.subscribed-channel img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; }
+.your-videos-list { display: flex; flex-direction: column; gap: 16px; }
+.your-video-row { display: grid; grid-template-columns: 240px 1fr auto; gap: 16px; align-items: start; }
+.your-video-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; }
+.your-video-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.your-video-title { font-weight: 600; font-size: 1.05rem; color: inherit; text-decoration: none; }
+.your-video-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #606060; font-size: 0.85rem; margin: 6px 0; }
+.your-video-description { color: #606060; font-size: 0.9rem; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.your-video-actions { display: flex; gap: 6px; }
+.your-video-actions button, .your-video-edit button, .settings-card button { border: 1px solid #ddd; background: #f2f2f2; border-radius: 18px; padding: 8px 14px; cursor: pointer; }
+.your-video-edit { display: flex; flex-direction: column; gap: 10px; }
+.your-video-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; flex: 1; }
+.your-video-edit input, .your-video-edit textarea, .your-video-edit select { padding: 8px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+.your-video-edit-row, .your-video-edit-actions { display: flex; gap: 12px; }
+.your-video-edit-actions { justify-content: flex-end; }
+.status-badge { text-transform: capitalize; background: #eee; border-radius: 10px; padding: 2px 8px; font-size: 0.75rem; }
+.status-published { background: #e3f6e8; color: #137333; }
+.status-processing { background: #fff4e0; color: #9a5b00; }
+.status-failed { background: #fde7e7; color: #b3261e; }
+.form-error { color: #b3261e; }
+.settings-page { max-width: 760px; }
+.settings-card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.settings-card h2 { font-size: 1.1rem; margin: 0; }
+.settings-toggle { display: flex; align-items: center; gap: 8px; }
+.settings-hint, .settings-message { color: #606060; font-size: 0.9rem; }
+.shortcut-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 0; }
+.shortcut-list div { display: flex; gap: 10px; }
+.shortcut-list dt { font-weight: 600; min-width: 90px; }
+.shortcut-list dd { margin: 0; }
+.watch-description-text { white-space: pre-wrap; }
+.video-title a, .channel-name a { color: inherit; text-decoration: none; }
+@media (max-width: 700px) {
+  .feed-page { padding: 16px 12px; }
+  .your-video-row { grid-template-columns: 1fr; }
+  .your-video-edit-row { flex-direction: column; }
+}

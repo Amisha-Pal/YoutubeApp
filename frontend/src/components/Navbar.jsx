@@ -14,6 +14,9 @@ import {
 
 import UploadModal from "./UploadModal";
 import ProfileMenu from "./ProfileMenu";
+import AuthModal from "./AuthModal";
+import { WS_BASE_URL } from "../api/config";
+import { isLoggedIn } from "../utils/auth";
 import NotificationPanel from "./NotificationPanel";
 import axiosClient from "../api/axiosClient";
 
@@ -23,6 +26,8 @@ export default function Navbar({
   onSearchChange = () => { },
 }) {
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -101,7 +106,6 @@ export default function Navbar({
           await audioContextRef.current.resume();
         }
 
-        console.log("Notification audio enabled!");
       } catch (error) {
         console.error("Audio unlock error:", error);
       }
@@ -120,7 +124,6 @@ export default function Navbar({
       const audioContext = audioContextRef.current;
 
       if (!audioContext || audioContext.state !== "running") {
-        console.log("Notification audio is not unlocked yet.");
         return;
       }
 
@@ -205,7 +208,6 @@ export default function Navbar({
     };
   }, []);
 
-  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -223,9 +225,11 @@ export default function Navbar({
       }
     }
 
+    if (!isLoggedIn()) return undefined;
+
     fetchUnreadCount();
 
-    const intervalId = window.setInterval(fetchUnreadCount, 15000);
+    const intervalId = window.setInterval(fetchUnreadCount, 30000);
 
     return () => {
       isMounted = false;
@@ -251,18 +255,16 @@ export default function Navbar({
       if (!token) return;
 
       socket = new WebSocket(
-        `ws://127.0.0.1:8000/ws/notifications/?token=${encodeURIComponent(token)}`
+        `${WS_BASE_URL}/ws/notifications/?token=${encodeURIComponent(token)}`
       );
 
       socket.onopen = () => {
-        console.log("Notification WebSocket Connected!");
       };
 
       socket.onmessage = (event) => {
         try {
           const notification = JSON.parse(event.data);
 
-          console.log("New Real-time Notification:", notification);
 
           // Update Navbar badge
           if (!notification.is_read) {
@@ -287,7 +289,6 @@ export default function Navbar({
       };
 
       socket.onclose = () => {
-        console.log("Notification WebSocket Disconnected.");
 
         if (isMounted) {
           reconnectTimer = window.setTimeout(
@@ -345,7 +346,34 @@ export default function Navbar({
     onSearchChange("");
   }
 
+  function handleVoiceSearch() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Voice search is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = navigator.language || "en-US";
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        onSearchChange?.(transcript);
+        navigate(`/search?q=${encodeURIComponent(transcript)}`);
+      }
+    };
+    recognition.start();
+  }
+
   function toggleNotifications() {
+    if (!isLoggedIn()) {
+      setAuthOpen(true);
+      return;
+    }
+
     setNotificationsOpen((previous) => !previous);
     setProfileOpen(false);
   }
@@ -470,7 +498,7 @@ export default function Navbar({
           className="icon-button mic-button"
           aria-label="Voice search"
           type="button"
-          onClick={() => alert("Voice search baad mein add karenge.")}
+          onClick={handleVoiceSearch}
         >
           <Mic size={21} />
         </button>
@@ -482,6 +510,10 @@ export default function Navbar({
           className="icon-button create-button"
           type="button"
           onClick={() => {
+            if (!isLoggedIn()) {
+              setAuthOpen(true);
+              return;
+            }
             setUploadOpen(true);
             setNotificationsOpen(false);
             setProfileOpen(false);
@@ -525,6 +557,8 @@ export default function Navbar({
         isOpen={uploadOpen}
         onClose={() => setUploadOpen(false)}
       />
+
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
 
       <ProfileMenu
         isOpen={profileOpen}

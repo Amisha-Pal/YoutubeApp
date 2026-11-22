@@ -87,3 +87,45 @@ class AuthFlowTests(APITestCase):
     def test_profile_requires_auth(self):
         response = self.client.get(reverse("accounts:profile"))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class PasswordResetTests(APITestCase):
+    def test_password_reset_flow(self):
+        from django.core import mail
+        from urllib.parse import parse_qs, urlparse
+
+        User.objects.create_user("resetme", "reset@example.com", "OldPass123!")
+        response = self.client.post(
+            "/api/accounts/password-reset/", {"email": "reset@example.com"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        link = next(
+            line for line in mail.outbox[0].body.splitlines() if "reset-password" in line
+        )
+        query = parse_qs(urlparse(link).query)
+
+        bad = self.client.post(
+            "/api/accounts/password-reset/confirm/",
+            {"uid": query["uid"][0], "token": "bad-token", "new_password": "NewPass456!"},
+        )
+        self.assertEqual(bad.status_code, 400)
+
+        ok = self.client.post(
+            "/api/accounts/password-reset/confirm/",
+            {"uid": query["uid"][0], "token": query["token"][0], "new_password": "NewPass456!"},
+        )
+        self.assertEqual(ok.status_code, 200)
+        login = self.client.post(
+            "/api/accounts/login/", {"username": "resetme", "password": "NewPass456!"}
+        )
+        self.assertEqual(login.status_code, 200)
+
+    def test_unknown_email_gets_same_response(self):
+        from django.core import mail
+
+        response = self.client.post(
+            "/api/accounts/password-reset/", {"email": "nobody@example.com"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)

@@ -76,6 +76,7 @@ clearHistory,
 );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useHistory() {
 const context = useContext(HistoryContext);
 

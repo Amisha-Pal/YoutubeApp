@@ -1,5 +1,6 @@
 
 import { Link } from "react-router-dom";
+import PageLayout from "../components/PageLayout";
 import { Clock, Trash2, Play, ListVideo } from "lucide-react";
 
 import { useWatchLater } from "../context/WatchLaterContext";
@@ -8,7 +9,8 @@ export default function WatchLater() {
   const { watchLater, removeFromWatchLater } = useWatchLater();
 
   return (
-    <main className="watch-later-page">
+    <PageLayout>
+    <section className="watch-later-page">
       <section className="watch-later-heading">
         <div className="watch-later-heading-icon">
           <Clock size={30} />
@@ -86,7 +88,8 @@ export default function WatchLater() {
           ))}
         </section>
       )}
-    </main>
+    </section>
+    </PageLayout>
   );
 }
 

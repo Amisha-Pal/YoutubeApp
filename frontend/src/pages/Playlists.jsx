@@ -30,11 +30,11 @@ export default function Playlists() {
 
   const fetchPlaylists = async () => {
     try {
-      setLoading(true);
-      setError("");
-
-      const response = await axiosClient.get(API_ENDPOINTS.PLAYLISTS.LIST);
+      const response = await axiosClient.get(API_ENDPOINTS.PLAYLISTS.LIST, {
+        params: { owner: "me" },
+      });
       setPlaylists(response.data.results || response.data);
+      setError("");
     } catch (err) {
       console.error("Playlist fetch error:", err);
       setError(
@@ -47,7 +47,8 @@ export default function Playlists() {
   };
 
   useEffect(() => {
-    fetchPlaylists();
+    const timer = window.setTimeout(fetchPlaylists, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleCreatePlaylist = async (event) => {

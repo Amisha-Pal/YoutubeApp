@@ -1,4 +1,3 @@
-
 import { categories } from "../features/videos/videoData";
 
 export default function CategoryBar({ activeCategory, onCategoryChange }) {
@@ -7,6 +6,7 @@ export default function CategoryBar({ activeCategory, onCategoryChange }) {
       {categories.map((category) => (
         <button
           key={category}
+          type="button"
           className={`category-chip ${
             activeCategory === category ? "active" : ""
           }`}
@@ -18,4 +18,3 @@ export default function CategoryBar({ activeCategory, onCategoryChange }) {
     </div>
   );
 }
-

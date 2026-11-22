@@ -1,3 +1,12 @@
+import axios from "axios";
+import { API_BASE_URL } from "../api/config";
+
+export const AUTH_CHANGED_EVENT = "app:auth-changed";
+
+export function isLoggedIn() {
+  return Boolean(localStorage.getItem("accessToken"));
+}
+
 export function getCurrentUserId() {
   const token = localStorage.getItem("accessToken");
 
@@ -17,8 +26,32 @@ export function getCurrentUserId() {
     const decodedPayload = JSON.parse(atob(paddedPayload));
 
     return decodedPayload.user_id || null;
-  } catch (error) {
-    console.error("Unable to decode user ID:", error);
+  } catch {
     return null;
   }
+}
+
+export function clearTokens() {
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
+export async function logout() {
+  const accessToken = localStorage.getItem("accessToken");
+  const refreshToken = localStorage.getItem("refreshToken");
+
+  if (accessToken && refreshToken) {
+    try {
+      await axios.post(
+        `${API_BASE_URL}accounts/logout/`,
+        { refresh: refreshToken },
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+    } catch {
+      // Token may already be expired; local sign-out still proceeds.
+    }
+  }
+
+  clearTokens();
 }
