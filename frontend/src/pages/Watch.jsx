@@ -386,10 +386,12 @@ export default function Watch() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyboardShortcuts);
+    // Capture phase runs before the native <video controls> key handling, so
+    // preventDefault stops the browser from applying the same key twice.
+    window.addEventListener("keydown", handleKeyboardShortcuts, true);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyboardShortcuts);
+      window.removeEventListener("keydown", handleKeyboardShortcuts, true);
     };
   }, []);
 
@@ -1395,7 +1397,10 @@ export default function Watch() {
                   <button
                     type="button"
                     onClick={handleNextVideo}
-                    disabled={currentPlaylistIndex >= playlistQueue.length - 1}
+                    disabled={
+                      currentPlaylistIndex >= playlistQueue.length - 1 &&
+                      repeatMode !== "all"
+                    }
                   >
                     Next
                   </button>
