@@ -22,9 +22,18 @@ import axiosClient from "../api/axiosClient";
 
 export default function Navbar({
   onMenuClick,
-  searchQuery = "",
-  onSearchChange = () => { },
+  searchQuery: controlledSearchQuery,
+  onSearchChange: controlledOnSearchChange,
 }) {
+  // Pages that don't manage the search text (e.g. Watch) get local state.
+  const [localSearchQuery, setLocalSearchQuery] = useState("");
+  const isSearchControlled = typeof controlledOnSearchChange === "function";
+  const searchQuery = isSearchControlled
+    ? controlledSearchQuery ?? ""
+    : localSearchQuery;
+  const onSearchChange = isSearchControlled
+    ? controlledOnSearchChange
+    : setLocalSearchQuery;
   const [uploadOpen, setUploadOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
