@@ -95,6 +95,9 @@ class PasswordResetTests(APITestCase):
         from urllib.parse import parse_qs, urlparse
 
         User.objects.create_user("resetme", "reset@example.com", "OldPass123!")
+        old_refresh = self.client.post(
+            "/api/accounts/login/", {"username": "resetme", "password": "OldPass123!"}
+        ).data["refresh"]
         response = self.client.post(
             "/api/accounts/password-reset/", {"email": "reset@example.com"}
         )
@@ -116,6 +119,10 @@ class PasswordResetTests(APITestCase):
             {"uid": query["uid"][0], "token": query["token"][0], "new_password": "NewPass456!"},
         )
         self.assertEqual(ok.status_code, 200)
+        stale = self.client.post(
+            "/api/accounts/token/refresh/", {"refresh": old_refresh}
+        )
+        self.assertEqual(stale.status_code, 401)
         login = self.client.post(
             "/api/accounts/login/", {"username": "resetme", "password": "NewPass456!"}
         )

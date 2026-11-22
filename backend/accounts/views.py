@@ -9,6 +9,10 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, permissions, serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -163,6 +167,10 @@ class PasswordResetConfirmView(generics.GenericAPIView):
 
         user.set_password(password)
         user.save(update_fields=["password"])
+
+        # Revoke every existing session so a stolen refresh token stops working.
+        for outstanding in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=outstanding)
         return Response(
             {"message": "Password has been reset. You can now sign in."},
             status=status.HTTP_200_OK,
