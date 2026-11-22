@@ -316,6 +316,40 @@ class NotificationTests(BaseTestCase):
         self.assertEqual(self.client.get(reverse("videos:notification-list")).data["unread_count"], 0)
         self.assertEqual(self.client.delete(reverse("videos:notification-delete", args=[self.n2.id])).status_code, 200)
 
+    def test_list_pagination_and_status_filter(self):
+        for index in range(25):
+            Notification.objects.create(
+                recipient=self.owner,
+                sender=self.viewer,
+                notification_type="new_like",
+                message=f"extra {index}",
+                is_read=index % 2 == 0,
+            )
+        self.client.force_authenticate(self.owner)
+        url = reverse("videos:notification-list")
+
+        first = self.client.get(url).data
+        self.assertEqual(len(first["notifications"]), 20)
+        self.assertTrue(first["has_more"])
+        self.assertEqual(first["unread_count"], 14)
+
+        second = self.client.get(url, {"page": 2}).data
+        self.assertEqual(len(second["notifications"]), 7)
+        self.assertFalse(second["has_more"])
+        ids = {n["id"] for n in first["notifications"]} | {n["id"] for n in second["notifications"]}
+        self.assertEqual(len(ids), 27)
+
+        unread = self.client.get(url, {"status": "unread", "page_size": 10}).data
+        self.assertEqual(len(unread["notifications"]), 10)
+        self.assertTrue(all(not n["is_read"] for n in unread["notifications"]))
+        unread_2 = self.client.get(url, {"status": "unread", "page_size": 10, "page": 2}).data
+        self.assertEqual(len(unread_2["notifications"]), 4)
+        self.assertFalse(unread_2["has_more"])
+
+        read = self.client.get(url, {"status": "read", "page_size": 100}).data
+        self.assertEqual(len(read["notifications"]), 13)
+        self.assertEqual(self.client.get(url, {"page": "x"}).status_code, 400)
+
     def test_cannot_touch_others_notifications(self):
         self.client.force_authenticate(self.viewer)
         self.assertEqual(self.client.post(reverse("videos:notification-mark-read", args=[self.n1.id])).status_code, 404)

@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import axiosClient from "../api/axiosClient";
 
+const NOTIFICATION_PAGE_SIZE = 20;
+
 function formatNotificationTime(dateString) {
   if (!dateString) return "";
 
@@ -81,14 +83,36 @@ export default function NotificationPanel({
   // Re-render every minute so relative times ("5 min ago") stay fresh.
   const [, setClockTick] = useState(0);
   const [error, setError] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
+  const statusParam = activeFilter === "all" ? undefined : activeFilter;
+
+  // replace=true loads a fresh first page; otherwise the first page is merged
+  // in so older pages loaded with "Load more" are kept during polling.
+  const fetchNotifications = useCallback(async (replace = false) => {
     try {
-      const response = await axiosClient.get("videos/notifications/");
+      const response = await axiosClient.get("videos/notifications/", {
+        params: { page_size: NOTIFICATION_PAGE_SIZE, status: statusParam },
+      });
+      const firstPage = response.data.notifications || [];
 
       setError("");
 
-      setNotifications(response.data.notifications || []);
+      if (replace || !response.data.has_more) {
+        setNotifications(firstPage);
+        setHasMore(Boolean(response.data.has_more));
+      } else {
+        const firstPageIds = new Set(firstPage.map((item) => item.id));
+        const oldest = new Date(firstPage[firstPage.length - 1].created_at);
+        setNotifications((previous) => [
+          ...firstPage,
+          ...previous.filter(
+            (item) =>
+              !firstPageIds.has(item.id) && new Date(item.created_at) <= oldest
+          ),
+        ]);
+      }
       setUnreadCount(response.data.unread_count || 0);
       onUnreadCountChange?.(response.data.unread_count || 0);
     } catch (err) {
@@ -97,7 +121,33 @@ export default function NotificationPanel({
     } finally {
       setLoading(false);
     }
-  }, [onUnreadCountChange]);
+  }, [onUnreadCountChange, statusParam]);
+
+  async function loadMoreNotifications() {
+    try {
+      setLoadingMore(true);
+      // Derive the page from what is loaded so deletions don't skip items.
+      const page = Math.floor(notifications.length / NOTIFICATION_PAGE_SIZE) + 1;
+      const response = await axiosClient.get("videos/notifications/", {
+        params: { page, page_size: NOTIFICATION_PAGE_SIZE, status: statusParam },
+      });
+      setNotifications((previous) => {
+        const seen = new Set(previous.map((item) => item.id));
+        return [
+          ...previous,
+          ...(response.data.notifications || []).filter(
+            (item) => !seen.has(item.id)
+          ),
+        ];
+      });
+      setHasMore(Boolean(response.data.has_more));
+    } catch (err) {
+      console.error("Notification error:", err);
+      setError("More notifications could not be loaded.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -110,7 +160,7 @@ export default function NotificationPanel({
   useEffect(() => {
     if (!isOpen) return;
 
-    const initialTimer = window.setTimeout(fetchNotifications, 0);
+    const initialTimer = window.setTimeout(() => fetchNotifications(true), 0);
 
     const intervalId = window.setInterval(() => {
       fetchNotifications();
@@ -358,7 +408,13 @@ export default function NotificationPanel({
               type="button"
               className={`notification-filter ${activeFilter === filter ? "active" : ""
                 }`}
-              onClick={() => setActiveFilter(filter)}
+              onClick={() => {
+                if (filter === activeFilter) return;
+                setLoading(true);
+                setNotifications([]);
+                setHasMore(false);
+                setActiveFilter(filter);
+              }}
             >
               {filter === "all"
                 ? "All"
@@ -424,7 +480,8 @@ export default function NotificationPanel({
           ) : error ? (
             <p className="notification-empty">{error}</p>
           ) : filteredNotifications.length > 0 ? (
-            filteredNotifications.map((notification) => (
+            <>
+            {filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
                 className={`notification-item ${!notification.is_read ? "unread" : ""
@@ -475,7 +532,20 @@ export default function NotificationPanel({
                   <Trash2 size={16} />
                 </button>
               </div>
-            ))
+            ))}
+            {hasMore && (
+              <div className="notification-load-more">
+                <button
+                  type="button"
+                  className="load-more-btn"
+                  onClick={loadMoreNotifications}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading..." : "Load more"}
+                </button>
+              </div>
+            )}
+            </>
           ) : (
             <div className="notification-empty">
               <Bell size={38} />

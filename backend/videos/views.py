@@ -743,27 +743,46 @@ class NotificationListView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
+    DEFAULT_PAGE_SIZE = 20
+    MAX_PAGE_SIZE = 100
 
+    def get(self, request):
         notifications = Notification.objects.filter(
             recipient=request.user
         ).select_related(
             "sender",
             "video",
-        )
+        ).order_by("-created_at", "-id")
 
-        serializer = NotificationSerializer(
-            notifications[:100],
-            many=True,
-        )
+        unread_count = notifications.filter(is_read=False).count()
 
-        unread_count = notifications.filter(
-            is_read=False
-        ).count()
+        status_filter = request.query_params.get("status")
+        if status_filter == "unread":
+            notifications = notifications.filter(is_read=False)
+        elif status_filter == "read":
+            notifications = notifications.filter(is_read=True)
+
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+            page_size = int(
+                request.query_params.get("page_size", self.DEFAULT_PAGE_SIZE)
+            )
+        except (TypeError, ValueError):
+            raise ValidationError({"detail": "page and page_size must be integers."})
+        page_size = min(max(1, page_size), self.MAX_PAGE_SIZE)
+
+        offset = (page - 1) * page_size
+        # Fetch one extra row to know whether another page exists.
+        rows = list(notifications[offset:offset + page_size + 1])
 
         return Response({
-            "notifications": serializer.data,
+            "notifications": NotificationSerializer(
+                rows[:page_size],
+                many=True,
+            ).data,
             "unread_count": unread_count,
+            "page": page,
+            "has_more": len(rows) > page_size,
         })
 
 class NotificationPreferenceView(APIView):

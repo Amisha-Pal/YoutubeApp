@@ -5019,3 +5019,9 @@ a {
   .sidebar.sidebar-mini { display: none; }
   .sidebar.sidebar-expanded { z-index: 150; box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4); }
 }
+
+.notification-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 16px;
+}

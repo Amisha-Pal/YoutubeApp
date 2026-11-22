@@ -217,7 +217,9 @@ export default function Navbar({
 
     async function fetchUnreadCount() {
       try {
-        const response = await axiosClient.get("videos/notifications/");
+        const response = await axiosClient.get("videos/notifications/", {
+          params: { page_size: 1 },
+        });
 
         if (isMounted) {
           setUnreadNotificationCount(response.data.unread_count || 0);
