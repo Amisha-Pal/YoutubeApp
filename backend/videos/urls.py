@@ -9,7 +9,18 @@ from .views import (
     CommentReactionView,
     SubscriptionView,
     NotificationListView,
+    NotificationPreferenceView,
     NotificationMarkReadView,
+    NotificationMarkAllReadView,
+    ChannelProfileView,
+    ChannelVideosView,
+    PlaylistListCreateView,
+    PlaylistDetailView,
+    PlaylistAddVideoView,
+    PlaylistRemoveVideoView,
+    PlaylistReorderView,
+    ChannelSearchView,
+    NotificationDeleteView,
 )
 
 app_name = "videos"
@@ -24,6 +35,17 @@ urlpatterns = [
     path("comments/<int:comment_id>/reaction/", CommentReactionView.as_view(), name="comment-reaction",),
     path("channels/<int:channel_id>/subscribe/", SubscriptionView.as_view(), name="channel-subscription"),
     path("notifications/", NotificationListView.as_view(), name="notification-list"),
+    path("notification-preferences/", NotificationPreferenceView.as_view(), name="notification-preferences"),
+    path("notifications/mark-all-read/", NotificationMarkAllReadView.as_view(), name="notification-mark-all-read"),
     path("notifications/<int:notification_id>/read/", NotificationMarkReadView.as_view(), name="notification-mark-read"),
+    path("channels/<int:channel_id>/", ChannelProfileView.as_view(), name="channel-profile"),
+    path("channels/<int:channel_id>/videos/", ChannelVideosView.as_view(), name="channel-videos"),
+    path("playlists/", PlaylistListCreateView.as_view(), name="playlist-list-create"),
+    path("playlists/<int:playlist_id>/", PlaylistDetailView.as_view(), name="playlist-detail"),
+    path("playlists/<int:playlist_id>/videos/", PlaylistAddVideoView.as_view(), name="playlist-add-video"),
+    path("playlists/<int:playlist_id>/videos/<int:video_id>/", PlaylistRemoveVideoView.as_view(), name="playlist-remove-video"),
+    path("playlists/<int:playlist_id>/reorder/", PlaylistReorderView.as_view(), name="playlist-reorder"),
+    path("channels/search/", ChannelSearchView.as_view(), name="channel-search"),
+    path("notifications/<int:notification_id>/", NotificationDeleteView.as_view(), name="notification-delete"),
 ]
 

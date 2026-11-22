@@ -51,6 +51,11 @@ class Video(models.Model):
         null=True,
     )
 
+    video_qualities = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
     thumbnail = models.ImageField(
         upload_to="thumbnails/",
         blank=True,
@@ -63,6 +68,7 @@ class Video(models.Model):
         default=Status.PROCESSING,
     )
 
+    duration = models.PositiveIntegerField(default=0)
     views_count = models.PositiveBigIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -216,7 +222,9 @@ class Notification(models.Model):
     class NotificationType(models.TextChoices):
         NEW_VIDEO = "new_video", "New Video"
         NEW_COMMENT = "new_comment", "New Comment"
+        NEW_REPLY = "new_reply", "New Reply"
         NEW_SUBSCRIBER = "new_subscriber", "New Subscriber"
+        NEW_LIKE = "new_like", "New Like"
 
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -254,3 +262,94 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.recipient} - {self.message}"
+
+class NotificationPreference(models.Model):
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+
+    new_video = models.BooleanField(default=True)
+    new_comment = models.BooleanField(default=True)
+    new_reply = models.BooleanField(default=True)
+    new_subscriber = models.BooleanField(default=True)
+    new_like = models.BooleanField(default=True)
+    sound_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - Notification Preferences"
+
+class Playlist(models.Model):
+
+    class Visibility(models.TextChoices):
+        PUBLIC = "public", "Public"
+        PRIVATE = "private", "Private"
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="playlists",
+    )
+
+    title = models.CharField(max_length=200)
+
+    description = models.TextField(
+        blank=True,
+        max_length=1000,
+    )
+
+    visibility = models.CharField(
+        max_length=10,
+        choices=Visibility.choices,
+        default=Visibility.PUBLIC,
+    )
+
+    videos = models.ManyToManyField(
+        Video,
+        through="PlaylistVideo",
+        related_name="playlists",
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} - {self.owner.username}"
+
+class PlaylistVideo(models.Model):
+
+    playlist = models.ForeignKey(
+        Playlist,
+        on_delete=models.CASCADE,
+        related_name="playlist_items",
+    )
+
+    video = models.ForeignKey(
+        Video,
+        on_delete=models.CASCADE,
+        related_name="playlist_items",
+    )
+
+    position = models.PositiveIntegerField(default=0)
+
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "added_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["playlist", "video"],
+                name="unique_video_in_playlist",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.playlist.title} - {self.video.title}"

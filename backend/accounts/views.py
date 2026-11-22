@@ -2,11 +2,11 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.exceptions import ValidationError
-from .serializers import RegisterSerializer, UserProfileSerializer
+from .serializers import RegisterSerializer, UserProfileSerializer, ChannelProfileSerializer
 from rest_framework import generics, permissions, status, serializers
-
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from .models import ChannelProfile
 from .serializers import RegisterSerializer
-
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
@@ -66,3 +66,13 @@ class LogoutView(generics.GenericAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+class ChannelProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = ChannelProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_object(self):
+        profile, _ = ChannelProfile.objects.get_or_create(
+            user=self.request.user
+        )
+        return profile

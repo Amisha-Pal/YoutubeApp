@@ -1,6 +1,8 @@
 
 import { useState } from "react";
 import { UserRound, History, ListVideo, Clock, ThumbsUp, Clapperboard } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { getCurrentUserId } from "../utils/auth";
 
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
@@ -8,7 +10,7 @@ import Sidebar from "../components/Sidebar";
 const youOptions = [
   { label: "Your channel", icon: UserRound },
   { label: "History", icon: History, path: "/history" },
-  { label: "Playlists", icon: ListVideo },
+  { label: "Playlists", icon: ListVideo, path: "/playlists" },
   { label: "Your videos", icon: Clapperboard },
   { label: "Watch later", icon: Clock, path: "/watch-later" },
   { label: "Liked videos", icon: ThumbsUp },
@@ -17,6 +19,7 @@ const youOptions = [
 export default function You() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const navigate = useNavigate();
 
   return (
     <div className="app-shell">
@@ -30,9 +33,8 @@ export default function You() {
         <Sidebar isOpen={sidebarOpen} />
 
         <main
-          className={`main-content ${
-            sidebarOpen ? "sidebar-expanded" : "sidebar-mini"
-          }`}
+          className={`main-content ${sidebarOpen ? "sidebar-expanded" : "sidebar-mini"
+            }`}
         >
           <section className="you-page">
             <h1>You</h1>
@@ -44,7 +46,19 @@ export default function You() {
                   key={label}
                   type="button"
                   className="you-option"
-                  onClick={() => path && (window.location.href = path)}
+                  onClick={() => {
+                    if (label === "Your channel") {
+                      const userId = getCurrentUserId();
+
+                      if (userId) {
+                        navigate(`/channel/${userId}`);
+                      } else {
+                        alert("Please login to view your channel.");
+                      }
+                    } else if (path) {
+                      navigate(path);
+                    }
+                  }}
                 >
                   <Icon size={24} />
                   <span>{label}</span>

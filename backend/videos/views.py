@@ -6,8 +6,33 @@ from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from .models import Video, VideoReaction, Comment, CommentReaction, Subscription, Notification
-from .serializers import VideoSerializer, CommentSerializer, NotificationSerializer
+from .notification_utils import (
+    create_notification,
+    send_notification_to_user,
+)
+from django.utils import timezone
+from datetime import timedelta
+from .models import (
+    Video,
+    VideoReaction,
+    Comment,
+    CommentReaction,
+    Subscription,
+    Notification,
+    NotificationPreference,
+    Playlist,
+    PlaylistVideo,
+)
+
+from .serializers import (
+    VideoSerializer,
+    CommentSerializer,
+    NotificationSerializer,
+    NotificationPreferenceSerializer,
+    ChannelProfileSerializer,
+    PlaylistSerializer,
+)
+
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -37,6 +62,46 @@ class VideoListCreateView(generics.ListCreateAPIView):
 
         if category and category != "All":
             queryset = queryset.filter(category__iexact=category)
+
+                # Filter videos by upload date
+        upload_date = self.request.query_params.get("upload_date", "").strip()
+
+        now = timezone.now()
+
+        if upload_date == "today":
+            queryset = queryset.filter(
+                created_at__date=timezone.localdate()
+            )
+
+        elif upload_date == "week":
+            queryset = queryset.filter(
+                created_at__gte=now - timedelta(days=7)
+            )
+
+        elif upload_date == "month":
+            queryset = queryset.filter(
+                created_at__gte=now - timedelta(days=30)
+            )
+
+        elif upload_date == "year":
+            queryset = queryset.filter(
+                created_at__gte=now - timedelta(days=365)
+            )
+
+                # Filter videos by duration
+        duration_filter = self.request.query_params.get("duration", "").strip()
+
+        if duration_filter == "under_4":
+            queryset = queryset.filter(duration__lt=240)
+
+        elif duration_filter == "4_to_20":
+            queryset = queryset.filter(
+                duration__gte=240,
+                duration__lte=1200,
+            )
+
+        elif duration_filter == "over_20":
+            queryset = queryset.filter(duration__gt=1200)
 
         # Sort videos
         sort_by = self.request.query_params.get("sort", "latest")
@@ -167,6 +232,27 @@ class VideoReactionView(APIView):
             )
             user_reaction = reaction_type
 
+            # Notify video owner only when another user likes the video.
+            if (
+                reaction_type == VideoReaction.ReactionType.LIKE
+                and video.owner != request.user
+            ):
+                notification = create_notification(
+                    recipient=video.owner,
+                    sender=request.user,
+                    video=video,
+                    notification_type=Notification.NotificationType.NEW_LIKE,
+                    message=(
+                        f"{request.user.username} liked your video: "
+                        f"{video.title}"
+                    ),
+                )
+
+                if notification:
+                    transaction.on_commit(
+                        lambda: send_notification_to_user(notification)
+                    )
+
         likes_count = video.reactions.filter(
             reaction=VideoReaction.ReactionType.LIKE
         ).count()
@@ -254,6 +340,42 @@ class CommentListCreateView(generics.ListCreateAPIView):
             user=self.request.user,
         )
 
+        # Reply par original commenter ko notify karo.
+        # Normal comment par video owner ko notify karo.
+        recipient = parent.user if parent else video.owner
+
+        # Khud ko notification nahi bhejni.
+        if recipient != self.request.user:
+
+            notification_type = (
+                Notification.NotificationType.NEW_REPLY
+                if parent
+                else Notification.NotificationType.NEW_COMMENT
+            )
+
+            if parent:
+                message = (
+                    f"{self.request.user.username} replied to your comment "
+                    f"on {video.title}"
+                )
+            else:
+                message = (
+                    f"{self.request.user.username} commented on your video: "
+                    f"{video.title}"
+                )
+
+            notification = create_notification(
+                recipient=recipient,
+                sender=self.request.user,
+                video=video,
+                notification_type=notification_type,
+                message=message,
+            )
+
+            if notification:
+                transaction.on_commit(
+                    lambda: send_notification_to_user(notification)
+                )
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
@@ -303,12 +425,13 @@ class CommentReactionView(APIView):
         ).first()
 
         if existing_reaction:
-
             if existing_reaction.reaction == reaction_type:
+                # Same button dobara click karne par reaction remove hoga.
                 existing_reaction.delete()
                 user_reaction = None
 
             else:
+                # Like ko Dislike ya Dislike ko Like mein change karo.
                 existing_reaction.reaction = reaction_type
                 existing_reaction.save(
                     update_fields=["reaction", "updated_at"]
@@ -316,12 +439,34 @@ class CommentReactionView(APIView):
                 user_reaction = reaction_type
 
         else:
-            CommentReaction.objects.create(
-                comment=comment,
+            # First time reaction create karo.
+            VideoReaction.objects.create(
+                video=video,
                 user=request.user,
                 reaction=reaction_type,
             )
             user_reaction = reaction_type
+
+            # Notify video owner only when another user likes the video.
+            if (
+                reaction_type == VideoReaction.ReactionType.LIKE
+                and video.owner != request.user
+            ):
+                notification = create_notification(
+                    recipient=video.owner,
+                    sender=request.user,
+                    video=video,
+                    notification_type=Notification.NotificationType.NEW_LIKE,
+                    message=(
+                        f"{request.user.username} liked your video: "
+                        f"{video.title}"
+                    ),
+                )
+
+                if notification:
+                    transaction.on_commit(
+                        lambda: send_notification_to_user(notification)
+                    )
 
         likes_count = comment.reactions.filter(
             reaction=CommentReaction.ReactionType.LIKE
@@ -366,7 +511,7 @@ class SubscriptionView(APIView):
             "channel_id": channel.id,
             "is_subscribed": is_subscribed,
             "subscribers_count": subscribers_count,
-        })
+    })
 
     def post(self, request, channel_id):
 
@@ -385,6 +530,24 @@ class SubscriptionView(APIView):
             subscriber=request.user,
             channel=channel,
         )
+
+        # Notify channel owner only for a new subscription.
+        if created:
+            notification = create_notification(
+                recipient=channel,
+                sender=request.user,
+                notification_type=(
+                    Notification.NotificationType.NEW_SUBSCRIBER
+                ),
+                message=(
+                    f"{request.user.username} subscribed to your channel."
+                ),
+            )
+
+            if notification:
+                transaction.on_commit(
+                    lambda: send_notification_to_user(notification)
+                )
 
         subscribers_count = Subscription.objects.filter(
             channel=channel,
@@ -451,6 +614,37 @@ class NotificationListView(APIView):
             "unread_count": unread_count,
         })
 
+class NotificationPreferenceView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+
+        preferences, created = NotificationPreference.objects.get_or_create(
+            user=request.user
+        )
+
+        serializer = NotificationPreferenceSerializer(preferences)
+        return Response(serializer.data)
+
+    def patch(self, request):
+
+        preferences, created = NotificationPreference.objects.get_or_create(
+            user=request.user
+        )
+
+        serializer = NotificationPreferenceSerializer(
+            preferences,
+            data=request.data,
+            partial=True,
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
+
+
 class NotificationMarkReadView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
@@ -470,3 +664,340 @@ class NotificationMarkReadView(APIView):
             "message": "Notification marked as read.",
             "is_read": True,
         })
+
+class NotificationMarkAllReadView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+
+        updated_count = Notification.objects.filter(
+            recipient=request.user,
+            is_read=False,
+        ).update(is_read=True)
+
+        return Response({
+            "message": "All notifications marked as read.",
+            "updated_count": updated_count,
+            "unread_count": 0,
+        })
+
+class ChannelSearchView(generics.ListAPIView):
+
+    serializer_class = ChannelProfileSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        search_query = self.request.query_params.get(
+            "search", ""
+        ).strip()
+
+        queryset = User.objects.all()
+
+        if search_query:
+            queryset = queryset.filter(
+                username__icontains=search_query
+            )
+
+        return queryset.order_by("username")[:50]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context        
+
+class ChannelProfileView(APIView):
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, channel_id):
+
+        channel = get_object_or_404(
+            User,
+            id=channel_id,
+        )
+
+        serializer = ChannelProfileSerializer(
+            channel,
+            context={"request": request},
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+class ChannelVideosView(generics.ListAPIView):
+
+    serializer_class = VideoSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        channel_id = self.kwargs["channel_id"]
+
+        return Video.objects.filter(
+            owner_id=channel_id,
+            status=Video.Status.PUBLISHED,
+            visibility=Video.Visibility.PUBLIC,
+        ).select_related("owner")
+
+class PlaylistListCreateView(generics.ListCreateAPIView):
+
+    serializer_class = PlaylistSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = Playlist.objects.select_related(
+            "owner"
+        ).prefetch_related(
+            "playlist_items__video"
+        )
+
+        # Logged-in user apni private playlists bhi dekh sakta hai.
+        if user.is_authenticated:
+            return queryset.filter(
+                models.Q(visibility=Playlist.Visibility.PUBLIC)
+                | models.Q(owner=user)
+            ).distinct()
+
+        return queryset.filter(
+            visibility=Playlist.Visibility.PUBLIC
+        )
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [permissions.AllowAny()]
+
+        return [permissions.IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+class PlaylistDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+    serializer_class = PlaylistSerializer
+    lookup_url_kwarg = "playlist_id"
+
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = Playlist.objects.select_related(
+            "owner"
+        ).prefetch_related(
+            "playlist_items__video"
+        )
+
+        # GET: Public playlists aur apni private playlists.
+        if self.request.method == "GET":
+            if user.is_authenticated:
+                return queryset.filter(
+                    models.Q(visibility=Playlist.Visibility.PUBLIC)
+                    | models.Q(owner=user)
+                ).distinct()
+
+            return queryset.filter(
+                visibility=Playlist.Visibility.PUBLIC
+            )
+
+        # PATCH / PUT / DELETE: Sirf owner.
+        if user.is_authenticated:
+            return queryset.filter(owner=user)
+
+        return queryset.none()
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [permissions.AllowAny()]
+
+        return [permissions.IsAuthenticated()]
+
+class PlaylistAddVideoView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, playlist_id):
+
+        playlist = get_object_or_404(
+            Playlist,
+            id=playlist_id,
+            owner=request.user,
+        )
+
+        video_id = request.data.get("video_id")
+
+        if not video_id:
+            return Response(
+                {"detail": "video_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        video = get_object_or_404(
+            Video,
+            id=video_id,
+            status=Video.Status.PUBLISHED,
+        )
+        # Non-public videos cannot be added to public playlists.
+        if (
+            playlist.visibility == Playlist.Visibility.PUBLIC
+            and video.visibility != Video.Visibility.PUBLIC
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Only public videos can be added "
+                        "to public playlists."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Users cannot add another user's private or unlisted videos.
+        if (
+            video.owner != request.user
+            and video.visibility != Video.Visibility.PUBLIC
+        ):
+            return Response(
+                {"detail": "You cannot add this video."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if PlaylistVideo.objects.filter(
+            playlist=playlist,
+            video=video,
+        ).exists():
+            return Response(
+                {"detail": "Video already exists in this playlist."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        last_item = playlist.playlist_items.order_by(
+            "-position"
+        ).first()
+
+        next_position = (
+            last_item.position + 1
+            if last_item
+            else 0
+        )
+
+        PlaylistVideo.objects.create(
+            playlist=playlist,
+            video=video,
+            position=next_position,
+        )
+
+        return Response(
+            {"detail": "Video added to playlist successfully."},
+            status=status.HTTP_201_CREATED,
+        )
+
+class PlaylistRemoveVideoView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, playlist_id, video_id):
+
+        playlist = get_object_or_404(
+            Playlist,
+            id=playlist_id,
+            owner=request.user,
+        )
+
+        playlist_video = get_object_or_404(
+            PlaylistVideo,
+            playlist=playlist,
+            video_id=video_id,
+        )
+
+        playlist_video.delete()
+
+        return Response(
+            {"detail": "Video removed from playlist successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+class PlaylistReorderView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, playlist_id):
+
+        playlist = get_object_or_404(
+            Playlist,
+            id=playlist_id,
+            owner=request.user,
+        )
+
+        video_ids = request.data.get("video_ids")
+
+        if not isinstance(video_ids, list):
+            return Response(
+                {"detail": "video_ids must be a list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(video_ids) != len(set(video_ids)):
+            return Response(
+                {"detail": "Duplicate video IDs are not allowed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+
+            playlist_videos = list(
+                PlaylistVideo.objects.filter(
+                    playlist=playlist
+                ).order_by("position", "added_at")
+            )
+
+            existing_ids = {
+                item.video_id for item in playlist_videos
+            }
+
+            if set(video_ids) != existing_ids:
+                return Response(
+                    {
+                        "detail": (
+                            "Video IDs must exactly match "
+                            "the videos in this playlist."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            video_map = {
+                item.video_id: item
+                for item in playlist_videos
+            }
+
+            for position, video_id in enumerate(video_ids):
+                video_map[video_id].position = position
+
+            PlaylistVideo.objects.bulk_update(
+                playlist_videos,
+                ["position"],
+            )
+
+        return Response(
+            {"detail": "Playlist reordered successfully."},
+            status=status.HTTP_200_OK,
+        )
+        
+class NotificationDeleteView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, notification_id):
+
+        notification = get_object_or_404(
+            Notification,
+            id=notification_id,
+            recipient=request.user,
+        )
+
+        notification.delete()
+
+        return Response({
+            "message": "Notification deleted successfully."
+        })
+        

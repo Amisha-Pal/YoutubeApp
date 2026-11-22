@@ -1,4 +1,3 @@
-
 const API_ENDPOINTS = {
   AUTH: {
     REGISTER: "accounts/register/",
@@ -10,6 +9,16 @@ const API_ENDPOINTS = {
     LIST: "videos/",
     DETAIL: (videoId) => `videos/${videoId}/`,
     UPLOAD: "videos/",
+  },
+
+  PLAYLISTS: {
+    LIST: "videos/playlists/",
+    DETAIL: (playlistId) => `videos/playlists/${playlistId}/`,
+    ADD_VIDEO: (playlistId) => `videos/playlists/${playlistId}/videos/`,
+    REMOVE_VIDEO: (playlistId, videoId) =>
+      `videos/playlists/${playlistId}/videos/${videoId}/`,
+    REORDER: (playlistId) =>
+      `videos/playlists/${playlistId}/reorder/`,
   },
 };
 

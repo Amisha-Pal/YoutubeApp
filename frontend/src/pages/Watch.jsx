@@ -1,6 +1,6 @@
 import { useWatchLater } from "../context/WatchLaterContext";
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ThumbsUp,
   ThumbsDown,
@@ -12,20 +12,411 @@ import {
   Copy,
   Play,
   Clock,
+  ListPlus,
+  Shuffle,
+  Repeat,
+  Repeat1,
 } from "lucide-react";
 
 import Navbar from "../components/Navbar";
-import { videos as staticVideos } from "../features/videos/videoData";
+// import { videos as staticVideos } from "../features/videos/videoData";
 import axiosClient from "../api/axiosClient";
+import API_ENDPOINTS from "../api/endpoints";
+import { getCurrentUserId } from "../utils/auth";
 import { useHistory } from "../context/HistoryContext";
 
 export default function Watch() {
   const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const playlistQueue = location.state?.playlistQueue || [];
+  const playlistId = location.state?.playlistId;
+  const playlistTitle = location.state?.playlistTitle;
+
+  const [shuffleEnabled, setShuffleEnabled] = useState(
+    location.state?.shuffleEnabled || false
+  );
+
+  const [repeatMode, setRepeatMode] = useState(
+    location.state?.repeatMode || "off"
+  );
+
+  const originalPlaylistQueue =
+    location.state?.originalPlaylistQueue || playlistQueue;
+  const currentPlaylistIndex = playlistQueue.findIndex(
+    (item) => String(item.video) === String(id)
+  );
+
+  // Playlist ke kisi video par navigate karna
+  const handlePlaylistNavigation = (index, shouldAutoplay = true) => {
+    if (index < 0 || index >= playlistQueue.length) return;
+
+    const nextVideo = playlistQueue[index];
+
+    navigate(`/watch/${nextVideo.video}`, {
+      state: {
+        playlistQueue,
+        originalPlaylistQueue,
+        playlistId,
+        playlistTitle,
+        shuffleEnabled,
+        repeatMode,
+        autoplay: shouldAutoplay,
+      },
+    });
+  };
+
+  // Next video
+  const handleNextVideo = () => {
+    if (currentPlaylistIndex < playlistQueue.length - 1) {
+      handlePlaylistNavigation(currentPlaylistIndex + 1);
+    } else if (repeatMode === "all" && playlistQueue.length > 0) {
+      handlePlaylistNavigation(0);
+    }
+  };
+
+  // Previous video
+  const handlePreviousVideo = () => {
+    if (currentPlaylistIndex > 0) {
+      handlePlaylistNavigation(currentPlaylistIndex - 1);
+    }
+  };
+
+  // Shuffle ON/OFF
+  const handleToggleShuffle = () => {
+    if (!shuffleEnabled) {
+      const currentVideo = playlistQueue[currentPlaylistIndex];
+
+      const shuffledVideos = [...originalPlaylistQueue].filter(
+        (item) => String(item.video) !== String(id)
+      );
+
+      // Fisher-Yates shuffle
+      for (let i = shuffledVideos.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledVideos[i], shuffledVideos[j]] = [
+          shuffledVideos[j],
+          shuffledVideos[i],
+        ];
+      }
+
+      const newQueue = currentVideo
+        ? [currentVideo, ...shuffledVideos]
+        : shuffledVideos;
+
+      setShuffleEnabled(true);
+
+      navigate(`/watch/${id}`, {
+        state: {
+          playlistQueue: newQueue,
+          originalPlaylistQueue,
+          playlistId,
+          playlistTitle,
+          shuffleEnabled: true,
+          repeatMode,
+          autoplay: false,
+        },
+      });
+    } else {
+      setShuffleEnabled(false);
+
+      navigate(`/watch/${id}`, {
+        state: {
+          playlistQueue: originalPlaylistQueue,
+          originalPlaylistQueue,
+          playlistId,
+          playlistTitle,
+          shuffleEnabled: false,
+          repeatMode,
+          autoplay: false,
+        },
+      });
+    }
+  };
+
+  // Repeat mode: Off -> All -> One -> Off
+  const handleToggleRepeat = () => {
+    const nextMode =
+      repeatMode === "off"
+        ? "all"
+        : repeatMode === "all"
+          ? "one"
+          : "off";
+
+    setRepeatMode(nextMode);
+
+    navigate(`/watch/${id}`, {
+      state: {
+        playlistQueue,
+        originalPlaylistQueue,
+        playlistId,
+        playlistTitle,
+        shuffleEnabled,
+        repeatMode: nextMode,
+        autoplay: false,
+      },
+    });
+  };
+
+  // Video khatam hone par automatically next video
+  // Video complete hone par Repeat / Auto Next
+  const handlePlaylistVideoEnded = (event) => {
+    // Autoplay OFF hai to video khatam hone par ruk jao
+    if (!autoplayEnabled) {
+      return;
+    }
+
+    // Repeat One: current video dobara play karo
+    if (repeatMode === "one") {
+      event.currentTarget.currentTime = 0;
+      event.currentTarget.play();
+      return;
+    }
+
+    // Next video available hai
+    if (currentPlaylistIndex < playlistQueue.length - 1) {
+      handlePlaylistNavigation(currentPlaylistIndex + 1, true);
+      return;
+    }
+
+    // Repeat All: playlist ke first video par wapas jao
+    if (repeatMode === "all" && playlistQueue.length > 0) {
+      handlePlaylistNavigation(0, true);
+    }
+  };
+
   const [video, setVideo] = useState(null);
   const [relatedVideos, setRelatedVideos] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const countedViewId = useRef(null);
+
+  const videoRef = useRef(null);
+
+  const [selectedQuality, setSelectedQuality] = useState("Auto");
+  const [isPictureInPicture, setIsPictureInPicture] = useState(false);
+
+  const [activeVideoUrl, setActiveVideoUrl] = useState("");
+  const pendingPlaybackRef = useRef(null);
+
+  const handleQualityChange = (event) => {
+    const quality = event.target.value;
+    const videoElement = videoRef.current;
+
+    if (!videoElement || !video) return;
+
+    const selectedUrl =
+      quality === "Auto"
+        ? video.videoUrl
+        : video.videoQualities?.[quality];
+
+    if (!selectedUrl) return;
+
+    const qualityUrl = new URL(
+      selectedUrl,
+      "http://127.0.0.1:8000"
+    ).href;
+
+    if (qualityUrl === videoElement.currentSrc) {
+      setSelectedQuality(quality);
+      return;
+    }
+
+    console.log("QUALITY SWITCH:", {
+      quality,
+      currentTime: videoElement.currentTime,
+      duration: videoElement.duration,
+      paused: videoElement.paused,
+      currentSrc: videoElement.currentSrc,
+    });
+
+    pendingPlaybackRef.current = {
+      currentTime: videoElement.currentTime,
+      wasPlaying: !videoElement.paused,
+    };
+
+    setSelectedQuality(quality);
+    setActiveVideoUrl(qualityUrl);
+  };
+
+  useEffect(() => {
+    setSelectedQuality("Auto");
+    setActiveVideoUrl("");
+    pendingPlaybackRef.current = null;
+  }, [id]);
+
+  useEffect(() => {
+    const handlePiPEnter = () => {
+      setIsPictureInPicture(true);
+    };
+
+    const handlePiPLeave = () => {
+      setIsPictureInPicture(false);
+    };
+
+    document.addEventListener(
+      "enterpictureinpicture",
+      handlePiPEnter
+    );
+
+    document.addEventListener(
+      "leavepictureinpicture",
+      handlePiPLeave
+    );
+
+    return () => {
+      document.removeEventListener(
+        "enterpictureinpicture",
+        handlePiPEnter
+      );
+
+      document.removeEventListener(
+        "leavepictureinpicture",
+        handlePiPLeave
+      );
+    };
+  }, []);
+
+  const handlePictureInPicture = async () => {
+    const videoElement = videoRef.current;
+
+    if (!videoElement) return;
+
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await videoElement.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.error("Picture-in-Picture error:", error);
+    }
+  };
+
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+
+  const [autoplayEnabled, setAutoplayEnabled] = useState(
+    () => localStorage.getItem("autoplayEnabled") !== "false"
+  );
+
+  const [theaterMode, setTheaterMode] = useState(false);
+
+  const handleToggleTheaterMode = () => {
+    setTheaterMode((previous) => !previous);
+  };
+
+  // Video Player Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyboardShortcuts = (event) => {
+      const videoElement = videoRef.current;
+
+      if (!videoElement) return;
+
+      // Input fields mein shortcuts disable
+      const tagName = event.target.tagName;
+
+      if (
+        ["INPUT", "TEXTAREA", "SELECT"].includes(tagName) ||
+        event.target.isContentEditable
+      ) {
+        return;
+      }
+
+      switch (event.key.toLowerCase()) {
+        case " ":
+        case "k":
+          event.preventDefault();
+
+          if (videoElement.paused) {
+            videoElement.play();
+          } else {
+            videoElement.pause();
+          }
+          break;
+
+        case "arrowleft":
+          event.preventDefault();
+          videoElement.currentTime = Math.max(
+            0,
+            videoElement.currentTime - 5
+          );
+          break;
+
+        case "arrowright":
+          event.preventDefault();
+          videoElement.currentTime = Math.min(
+            videoElement.duration || Infinity,
+            videoElement.currentTime + 5
+          );
+          break;
+
+        case "arrowup":
+          event.preventDefault();
+          videoElement.volume = Math.min(
+            1,
+            videoElement.volume + 0.05
+          );
+          break;
+
+        case "arrowdown":
+          event.preventDefault();
+          videoElement.volume = Math.max(
+            0,
+            videoElement.volume - 0.05
+          );
+          break;
+
+        case "m":
+          videoElement.muted = !videoElement.muted;
+          break;
+
+        case "t":
+          handleToggleTheaterMode();
+          break;
+
+        case "f":
+          event.preventDefault();
+
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          } else {
+            videoElement.requestFullscreen();
+          }
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyboardShortcuts);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyboardShortcuts);
+    };
+  }, []);
+
+  const handleToggleAutoplay = () => {
+    setAutoplayEnabled((previous) => {
+      const next = !previous;
+      localStorage.setItem("autoplayEnabled", String(next));
+      return next;
+    });
+  };
+
+  const playbackSpeeds = [
+    0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2,
+  ];
+
+  function handlePlaybackSpeedChange(event) {
+    const speed = Number(event.target.value);
+    setPlaybackSpeed(speed);
+
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +442,7 @@ export default function Watch() {
           views: `${data.views_count} `,
           uploaded: new Date(data.created_at).toLocaleDateString(),
           videoUrl: data.video_file,
+          videoQualities: data.video_qualities || {},
           thumbnail:
             data.thumbnail ||
             "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=640&h=360&fit=crop",
@@ -61,7 +453,44 @@ export default function Watch() {
 
         if (isMounted) {
           setVideo(formattedVideo);
-          setRelatedVideos(staticVideos);
+        }
+
+        // Related videos Backend API se fetch karna
+        try {
+          const relatedResponse = await axiosClient.get("videos/", {
+            params: {
+              category: data.category,
+              page: 1,
+            },
+          });
+
+          const relatedData = relatedResponse.data.results || relatedResponse.data;
+
+          const formattedRelatedVideos = relatedData
+            .filter((item) => String(item.id) !== String(data.id))
+            .sort(
+              (a, b) =>
+                Number(b.views_count || 0) - Number(a.views_count || 0)
+            )
+            .map((item) => ({
+              id: item.id,
+              title: item.title,
+              channel: item.owner_username,
+              views: Number(item.views_count || 0).toLocaleString("en-IN"),
+              thumbnail:
+                item.thumbnail ||
+                "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=640&h=360&fit=crop",
+            }));
+
+          if (isMounted) {
+            setRelatedVideos(formattedRelatedVideos);
+          }
+        } catch (relatedError) {
+          console.error("Related videos fetch failed:", relatedError);
+
+          if (isMounted) {
+            setRelatedVideos([]);
+          }
         }
       } catch (error) {
         console.error("Video fetch failed:", error);
@@ -86,6 +515,14 @@ export default function Watch() {
 
   useEffect(() => {
     if (!video?.ownerId) return;
+
+    const accessToken = localStorage.getItem("accessToken");
+
+    // Login nahi hai toh API call mat karo
+    if (!accessToken) {
+      setSubscribed(false);
+      return;
+    }
 
     async function fetchSubscription() {
       try {
@@ -143,6 +580,11 @@ export default function Watch() {
   const { addToWatchLater, removeFromWatchLater, isInWatchLater, } = useWatchLater();
 
   const [shareMessage, setShareMessage] = useState("");
+  // Playlist states
+  const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
+  const [userPlaylists, setUserPlaylists] = useState([]);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [playlistSaving, setPlaylistSaving] = useState(false);
   const [comment, setComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState("");
@@ -226,6 +668,67 @@ export default function Watch() {
     window.setTimeout(() => setShareMessage(""), 3000);
   }
 
+  // User ki playlists fetch karna
+  async function handleOpenPlaylistPicker() {
+    const token = localStorage.getItem("accessToken");
+
+    if (!token) {
+      setShareMessage("Playlist mein save karne ke liye pehle login karo.");
+      return;
+    }
+
+    setPlaylistLoading(true);
+    setShowPlaylistPicker(true);
+
+    try {
+      const response = await axiosClient.get(API_ENDPOINTS.PLAYLISTS.LIST);
+
+      const playlists = response.data.results || response.data;
+      const currentUserId = getCurrentUserId();
+
+      const myPlaylists = playlists.filter(
+        (playlist) => String(playlist.owner) === String(currentUserId)
+      );
+
+      setUserPlaylists(myPlaylists);
+    } catch (error) {
+      console.error("Playlists fetch failed:", error);
+      setShareMessage("Playlists load nahi ho payi.");
+      setShowPlaylistPicker(false);
+    } finally {
+      setPlaylistLoading(false);
+    }
+  }
+
+  // Video ko selected playlist mein add karna
+  async function handleSaveToPlaylist(playlistId) {
+    if (playlistSaving) return;
+
+    setPlaylistSaving(true);
+
+    try {
+      await axiosClient.post(
+        API_ENDPOINTS.PLAYLISTS.ADD_VIDEO(playlistId),
+        {
+          video_id: video.id,
+        }
+      );
+
+      setShareMessage("Video playlist mein successfully save ho gayi!");
+      setShowPlaylistPicker(false);
+    } catch (error) {
+      console.error("Save to playlist failed:", error);
+
+      const message = error.response?.data?.detail;
+
+      setShareMessage(
+        message || "Video playlist mein save nahi ho payi."
+      );
+    } finally {
+      setPlaylistSaving(false);
+    }
+  }
+
   // Video Like / Unlike
   async function handleReaction(reaction) {
     if (reactionLoading) return;
@@ -300,23 +803,40 @@ export default function Watch() {
   }
 
   // Video download
-  function handleDownload() {
+  async function handleDownload() {
     if (!video.videoUrl) {
       setShareMessage("Is video ka download URL available nahi hai.");
       window.setTimeout(() => setShareMessage(""), 3000);
       return;
     }
 
-    const link = document.createElement("a");
-    link.href = video.videoUrl;
-    link.download = `${video.title}.mp4`;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
+    try {
+      setShareMessage("Video download ho rahi hai...");
 
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+      const response = await fetch(video.videoUrl);
 
+      if (!response.ok) {
+        throw new Error("Video download failed");
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${video.title || "video"}.mp4`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+
+      setShareMessage("Video download start ho gayi!");
+    } catch (error) {
+      console.error("Download error:", error);
+      setShareMessage("Video download nahi ho payi.");
+    }
     window.setTimeout(() => setShareMessage(""), 3000);
   }
 
@@ -632,16 +1152,64 @@ export default function Watch() {
     <div className="app-shell">
       <Navbar />
 
-      <main className="watch-layout">
+      <main className={`watch-layout ${theaterMode ? "theater-mode" : ""}`}>
         <section className="watch-main">
           {/* Video player */}
           <div className="player-container">
             {video.videoUrl ? (
               <video
                 key={video.id}
+                ref={videoRef}
                 controls
                 playsInline
+                autoPlay={Boolean(location.state?.autoplay)}
+                onEnded={handlePlaylistVideoEnded}
                 poster={video.thumbnail}
+                src={activeVideoUrl || video.videoUrl}
+                onLoadedMetadata={() => {
+                  const pending = pendingPlaybackRef.current;
+                  const videoElement = videoRef.current;
+
+                  if (!pending || !videoElement) return;
+
+                  const targetTime = Math.min(
+                    pending.currentTime,
+                    Math.max(0, videoElement.duration - 1)
+                  );
+
+                  console.log("RESTORING PLAYBACK:", {
+                    targetTime,
+                    duration: videoElement.duration,
+                    readyState: videoElement.readyState,
+                  });
+
+                  // Seek ko thoda delay karke browser ko metadata process karne do.
+                  requestAnimationFrame(() => {
+                    videoElement.currentTime = targetTime;
+                  });
+                }}
+
+                onSeeked={() => {
+                  const pending = pendingPlaybackRef.current;
+                  const videoElement = videoRef.current;
+
+                  if (!pending || !videoElement) return;
+
+                  console.log("SEEK CHECK:", {
+                    targetTime: pending.currentTime,
+                    actualTime: videoElement.currentTime,
+                    seeking: videoElement.seeking,
+                  });
+
+                  // Position sahi restore hone par hi pending clear karo.
+                  if (Math.abs(videoElement.currentTime - pending.currentTime) < 1) {
+                    pendingPlaybackRef.current = null;
+
+                    if (pending.wasPlaying) {
+                      videoElement.play().catch(console.error);
+                    }
+                  }
+                }}
                 preload="metadata"
                 onLoadStart={() => {
                   setVideoLoading(true);
@@ -664,7 +1232,6 @@ export default function Watch() {
                   borderRadius: "12px",
                 }}
               >
-                <source src={video.videoUrl} type="video/mp4" />
                 Your browser does not support video playback.
               </video>
             ) : (
@@ -712,6 +1279,85 @@ export default function Watch() {
             )}
           </div>
 
+          <div className="watch-player-settings">
+            <div className="playback-speed-control">
+              <label htmlFor="playback-speed">Playback Speed:</label>
+
+              <select
+                id="playback-speed"
+                value={playbackSpeed}
+                onChange={handlePlaybackSpeedChange}
+              >
+                {playbackSpeeds.map((speed) => (
+                  <option key={speed} value={speed}>
+                    {speed === 1 ? "Normal" : `${speed}x`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="video-quality-control">
+              <label htmlFor="video-quality">Quality:</label>
+
+              <select
+                id="video-quality"
+                value={selectedQuality}
+                onChange={handleQualityChange}
+              >
+                <option value="Auto">Auto</option>
+
+                {["360p", "480p", "720p", "1080p"].map((quality) =>
+                  video.videoQualities?.[quality] ? (
+                    <option key={quality} value={quality}>
+                      {quality}
+                    </option>
+                  ) : null
+                )}
+              </select>
+            </div>
+
+            <div className="autoplay-control">
+              <span>Autoplay</span>
+
+              <button
+                type="button"
+                className={`autoplay-toggle ${autoplayEnabled ? "active" : ""}`}
+                onClick={handleToggleAutoplay}
+                aria-label={`Turn autoplay ${autoplayEnabled ? "off" : "on"}`}
+                aria-pressed={autoplayEnabled}
+              >
+                <span className="autoplay-toggle-knob" />
+              </button>
+
+              <span>{autoplayEnabled ? "On" : "Off"}</span>
+            </div>
+            <button
+              type="button"
+              className="pip-button"
+              onClick={handlePictureInPicture}
+              disabled={
+                !document.pictureInPictureEnabled ||
+                !video.videoUrl
+              }
+              title={
+                isPictureInPicture
+                  ? "Exit Picture-in-Picture"
+                  : "Enter Picture-in-Picture"
+              }
+            >
+              {isPictureInPicture ? "Exit PiP" : "Picture in Picture"}
+            </button>
+            <button
+              type="button"
+              className={`theater-mode-button ${theaterMode ? "active" : ""}`}
+              onClick={handleToggleTheaterMode}
+              aria-pressed={theaterMode}
+              title={theaterMode ? "Exit Theater Mode" : "Enter Theater Mode"}
+            >
+              {theaterMode ? "Exit Theater Mode" : "Theater Mode"}
+            </button>
+          </div>
+
           {videoLoading && video.videoUrl && !videoError && (
             <p role="status">Video load ho rahi hai...</p>
           )}
@@ -720,6 +1366,86 @@ export default function Watch() {
             <p role="alert">
               Video load nahi ho payi. Internet ya video URL check karo.
             </p>
+          )}
+
+          {/* Playlist Player Controls */}
+          {playlistQueue.length > 0 && (
+            <div className="watch-playlist-container">
+              <div className="watch-playlist-header">
+                <div>
+                  <h3>{playlistTitle || "Playlist"}</h3>
+                  <p>
+                    {currentPlaylistIndex + 1} of {playlistQueue.length} videos
+                  </p>
+                </div>
+
+                <div className="watch-playlist-controls">
+                  <button
+                    type="button"
+                    onClick={handlePreviousVideo}
+                    disabled={currentPlaylistIndex <= 0}
+                  >
+                    Previous
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextVideo}
+                    disabled={currentPlaylistIndex >= playlistQueue.length - 1}
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    className={shuffleEnabled ? "playlist-mode-active" : ""}
+                    onClick={handleToggleShuffle}
+                    title={shuffleEnabled ? "Turn Shuffle Off" : "Turn Shuffle On"}
+                  >
+                    <Shuffle size={18} />
+                    Shuffle
+                  </button>
+
+                  <button
+                    type="button"
+                    className={repeatMode !== "off" ? "playlist-mode-active" : ""}
+                    onClick={handleToggleRepeat}
+                    title={`Repeat: ${repeatMode}`}
+                  >
+                    {repeatMode === "one" ? (
+                      <Repeat1 size={18} />
+                    ) : (
+                      <Repeat size={18} />
+                    )}
+                    {repeatMode === "off"
+                      ? "Repeat Off"
+                      : repeatMode === "all"
+                        ? "Repeat All"
+                        : "Repeat One"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="watch-playlist-queue">
+                {playlistQueue.map((item, index) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    className={
+                      String(item.video) === String(id)
+                        ? "watch-playlist-item active"
+                        : "watch-playlist-item"
+                    }
+                    onClick={() => handlePlaylistNavigation(index)}
+                  >
+                    <span>{index + 1}</span>
+                    <span>{item.video_title}</span>
+                    {String(item.video) === String(id) && (
+                      <span className="now-playing-label">Playing</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           <h1 className="watch-title">{video.title}</h1>
@@ -811,8 +1537,23 @@ export default function Watch() {
 
               <button
                 type="button"
+                onClick={handleOpenPlaylistPicker}
+                title="Save to Playlist"
+              >
+                <ListPlus size={19} />
+                Save to Playlist
+              </button>
+
+              <button
+                type="button"
                 onClick={handleWatchLater}
+                className={isInWatchLater(video.id) ? "active-action" : ""}
                 aria-pressed={isInWatchLater(video.id)}
+                title={
+                  isInWatchLater(video.id)
+                    ? "Remove from Watch Later"
+                    : "Save to Watch Later"
+                }
               >
                 <Clock size={19} />
                 {isInWatchLater(video.id) ? "Saved" : "Watch Later"}
@@ -836,6 +1577,57 @@ export default function Watch() {
             </p>
           )}
 
+          {/* Save to Playlist Popup */}
+          {showPlaylistPicker && (
+            <div className="playlist-picker-overlay">
+              <div className="playlist-picker-modal">
+                <div className="playlist-picker-header">
+                  <h3>Save to Playlist</h3>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPlaylistPicker(false)}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {playlistLoading ? (
+                  <p>Loading playlists...</p>
+                ) : userPlaylists.length === 0 ? (
+                  <div className="playlist-picker-empty">
+                    <p>Abhi tumhari koi playlist nahi hai.</p>
+
+                    <Link
+                      to="/playlists"
+                      onClick={() => setShowPlaylistPicker(false)}
+                    >
+                      Create Playlist
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="playlist-picker-list">
+                    {userPlaylists.map((playlist) => (
+                      <button
+                        type="button"
+                        key={playlist.id}
+                        disabled={playlistSaving}
+                        onClick={() => handleSaveToPlaylist(playlist.id)}
+                      >
+                        <ListPlus size={18} />
+                        <span>{playlist.title}</span>
+                        <span>{playlist.videos_count} videos</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {playlistSaving && <p>Saving video...</p>}
+              </div>
+            </div>
+          )}
+
           {/* Video description */}
           <div className="watch-description">
             <p>
@@ -850,8 +1642,6 @@ export default function Watch() {
 
           {/* Comments section */}
           <section className="comments-section">
-            <h2>Comments ({comments.length})</h2>
-
             <h2>Comments ({comments.length})</h2>
 
             {commentsLoading && <p>Comments loading...</p>}

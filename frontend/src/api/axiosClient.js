@@ -78,8 +78,12 @@ axiosClient.interceptors.response.use(
       );
 
       const newAccessToken = response.data.access;
-
+      const newRefreshToken = response.data.refresh;
       localStorage.setItem("accessToken", newAccessToken);
+      // JWT rotation enabled hai, isliye naya refresh token bhi save karo.
+      if (newRefreshToken) {
+        localStorage.setItem("refreshToken", newRefreshToken);
+      }
 
       originalRequest.headers.Authorization =
         `Bearer ${newAccessToken}`;

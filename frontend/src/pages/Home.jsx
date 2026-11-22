@@ -20,6 +20,24 @@ function formatViews(count) {
   return String(count);
 }
 
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return "";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(
+      remainingSeconds
+    ).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(
+    remainingSeconds
+  ).padStart(2, "0")}`;
+}
+
 function formatUploadedDate(date) {
   const uploadedDate = new Date(date);
   const now = new Date();
@@ -46,6 +64,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   useEffect(() => {
     let isCancelled = false;
 
@@ -63,18 +85,21 @@ export default function Home() {
               ? { category: activeCategory }
               : {}),
             sort: sortBy,
+            page: 1,
           },
         });
+        console.log("HOME VIDEOS API:", response.data);
+        console.log("VIDEO TITLES:", response.data.results.map(v => v.title));
 
         if (isCancelled) return;
 
-        const formattedVideos = response.data.map((video) => ({
+        const formattedVideos = response.data.results.map((video) => ({
           id: video.id,
           title: video.title,
           channel: video.owner_username,
           views: formatViews(video.views_count),
           uploaded: formatUploadedDate(video.created_at),
-          duration: "",
+          duration: formatDuration(video.duration),
           category: video.category,
           thumbnail: video.thumbnail || FALLBACK_THUMBNAIL,
           videoUrl: video.video_file,
@@ -85,6 +110,8 @@ export default function Home() {
         }));
 
         setVideos(formattedVideos);
+        setPage(1);
+        setHasMore(Boolean(response.data.next));
       } catch (err) {
         if (!isCancelled) {
           console.error("Failed to fetch videos:", err);
@@ -104,6 +131,54 @@ export default function Home() {
       clearTimeout(timer);
     };
   }, [searchQuery, activeCategory, sortBy]);
+
+  async function loadMoreVideos() {
+    try {
+      setLoadingMore(true);
+
+      const query = searchQuery.trim();
+      const nextPage = page + 1;
+
+      const response = await axiosClient.get("videos/", {
+        params: {
+          ...(query ? { search: query } : {}),
+          ...(activeCategory !== "All"
+            ? { category: activeCategory }
+            : {}),
+          sort: sortBy,
+          page: nextPage,
+        },
+      });
+
+      const formattedVideos = response.data.results.map((video) => ({
+        id: video.id,
+        title: video.title,
+        channel: video.owner_username,
+        views: formatViews(video.views_count),
+        uploaded: formatUploadedDate(video.created_at),
+        duration: formatDuration(video.duration),
+        category: video.category,
+        thumbnail: video.thumbnail || FALLBACK_THUMBNAIL,
+        videoUrl: video.video_file,
+        avatar: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(
+          video.owner_username
+        )}`,
+        description: video.description,
+      }));
+
+      setVideos((previousVideos) => [
+        ...previousVideos,
+        ...formattedVideos,
+      ]);
+
+      setPage(nextPage);
+      setHasMore(Boolean(response.data.next));
+    } catch (err) {
+      console.error("Failed to load more videos:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const filteredVideos = useMemo(() => {
     return videos.filter((video) => {
@@ -172,6 +247,17 @@ export default function Home() {
                 </div>
               )}
             </div>
+            {hasMore && !loading && !error && (
+              <div className="load-more-container">
+                <button
+                  className="load-more-btn"
+                  onClick={loadMoreVideos}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading..." : "Load More"}
+                </button>
+              </div>
+            )}
           </section>
         </main>
       </div>

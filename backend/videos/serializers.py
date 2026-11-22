@@ -1,6 +1,15 @@
 from pathlib import Path
 from rest_framework import serializers
-from .models import Video, VideoReaction, Comment, CommentReaction, Notification
+from .models import (
+    Video,
+    VideoReaction,
+    Comment,
+    CommentReaction,
+    Notification,
+    NotificationPreference,
+    Playlist,
+    PlaylistVideo,
+)
 
 class VideoSerializer(serializers.ModelSerializer):
 
@@ -9,6 +18,7 @@ class VideoSerializer(serializers.ModelSerializer):
     likes_count = serializers.SerializerMethodField()
     dislikes_count = serializers.SerializerMethodField()
     user_reaction = serializers.SerializerMethodField()
+    video_qualities = serializers.ReadOnlyField()
 
     video_file = serializers.FileField(
         required=True,
@@ -49,8 +59,10 @@ class VideoSerializer(serializers.ModelSerializer):
             "category",
             "visibility",
             "video_file",
+            "video_qualities",
             "thumbnail",
             "status",
+            "duration",
             "views_count",
             "created_at",
             "updated_at",
@@ -64,6 +76,7 @@ class VideoSerializer(serializers.ModelSerializer):
             "owner",
             "owner_username",
             "status",
+            "duration",
             "views_count",
             "created_at",
             "updated_at",
@@ -269,3 +282,192 @@ class NotificationSerializer(serializers.ModelSerializer):
             "message",
             "created_at",
         ]
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = NotificationPreference
+
+        fields = [
+            "new_video",
+            "new_comment",
+            "new_reply",
+            "new_subscriber",
+            "new_like",
+            "sound_enabled",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "updated_at",
+        ]
+
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+class ChannelProfileSerializer(serializers.ModelSerializer):
+
+    subscribers_count = serializers.SerializerMethodField()
+    videos_count = serializers.SerializerMethodField()
+    is_subscribed = serializers.SerializerMethodField()
+    channel_customization = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+
+        fields = [
+            "id",
+            "username",
+            "subscribers_count",
+            "videos_count",
+            "is_subscribed",
+            "channel_customization",
+        ]
+
+    def get_subscribers_count(self, obj):
+        return obj.subscribers.count()
+
+    def get_videos_count(self, obj):
+        return Video.objects.filter(
+            owner=obj,
+            status=Video.Status.PUBLISHED,
+            visibility=Video.Visibility.PUBLIC,
+        ).count()
+
+    def get_is_subscribed(self, obj):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return False
+
+        return obj.subscribers.filter(
+            subscriber=request.user
+        ).exists()
+
+    def get_channel_customization(self, obj):
+        try:
+            profile = obj.channel_profile
+        except Exception:
+            return {
+                "profile_picture": None,
+                "banner": None,
+                "description": "",
+            }
+
+        request = self.context.get("request")
+
+        profile_picture = None
+        banner = None
+
+        if profile.profile_picture:
+            profile_picture = profile.profile_picture.url
+
+            if request:
+                profile_picture = request.build_absolute_uri(
+                    profile_picture
+                )
+
+        if profile.banner:
+            banner = profile.banner.url
+
+            if request:
+                banner = request.build_absolute_uri(banner)
+
+        return {
+            "profile_picture": profile_picture,
+            "banner": banner,
+            "description": profile.description,
+        }
+
+class PlaylistVideoSerializer(serializers.ModelSerializer):
+
+    video_title = serializers.CharField(
+        source="video.title",
+        read_only=True,
+    )
+
+    video_thumbnail = serializers.ImageField(
+        source="video.thumbnail",
+        read_only=True,
+    )
+
+    owner_username = serializers.CharField(
+        source="video.owner.username",
+        read_only=True,
+    )
+
+    class Meta:
+        model = PlaylistVideo
+
+        fields = [
+            "id",
+            "video",
+            "video_title",
+            "video_thumbnail",
+            "owner_username",
+            "position",
+            "added_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "video_title",
+            "video_thumbnail",
+            "owner_username",
+            "added_at",
+        ]
+
+class PlaylistSerializer(serializers.ModelSerializer):
+
+    owner_username = serializers.CharField(
+        source="owner.username",
+        read_only=True,
+    )
+
+    videos_count = serializers.SerializerMethodField()
+
+    videos = PlaylistVideoSerializer(
+        source="playlist_items",
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = Playlist
+
+        fields = [
+            "id",
+            "owner",
+            "owner_username",
+            "title",
+            "description",
+            "visibility",
+            "videos_count",
+            "videos",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "owner",
+            "owner_username",
+            "videos_count",
+            "videos",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_videos_count(self, obj):
+        return obj.videos.count()
+
+    def validate_title(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Playlist title cannot be empty."
+            )
+
+        return value
+        

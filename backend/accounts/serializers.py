@@ -40,3 +40,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "email"]
         read_only_fields = ["id", "username", "email"]
 
+class ChannelProfileSerializer(serializers.ModelSerializer):
+
+    username = serializers.CharField(
+        source="user.username",
+        read_only=True,
+    )
+
+    class Meta:
+        from .models import ChannelProfile
+
+        model = ChannelProfile
+
+        fields = [
+            "username",
+            "profile_picture",
+            "banner",
+            "description",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "username",
+            "created_at",
+            "updated_at",
+        ]
