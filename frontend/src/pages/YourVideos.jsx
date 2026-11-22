@@ -8,6 +8,8 @@ import { formatVideo } from "../utils/format";
 import { isLoggedIn } from "../utils/auth";
 
 const PAGE_SIZE = 50;
+const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
+const THUMBNAIL_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const EDITABLE_CATEGORIES = categories.filter((item) => item !== "All");
 
 function EditVideoForm({ video, onSaved, onCancel }) {
@@ -17,8 +19,25 @@ function EditVideoForm({ video, onSaved, onCancel }) {
     category: video.category || "Other",
     visibility: video.visibility,
   });
+  const [thumbnail, setThumbnail] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function handleThumbnail(event) {
+    const file = event.target.files?.[0] || null;
+    if (file && !THUMBNAIL_TYPES.includes(file.type)) {
+      setError("Thumbnail must be a JPG, PNG or WEBP image.");
+      event.target.value = "";
+      return;
+    }
+    if (file && file.size > MAX_THUMBNAIL_BYTES) {
+      setError("Thumbnail size cannot exceed 5 MB.");
+      event.target.value = "";
+      return;
+    }
+    setError("");
+    setThumbnail(file);
+  }
 
   function update(field) {
     return (event) => setForm((previous) => ({ ...previous, [field]: event.target.value }));
@@ -32,10 +51,17 @@ function EditVideoForm({ video, onSaved, onCancel }) {
     }
     try {
       setSaving(true);
-      const response = await axiosClient.patch(`videos/${video.id}/`, form);
+      let payload = form;
+      if (thumbnail) {
+        payload = new FormData();
+        Object.entries(form).forEach(([key, value]) => payload.append(key, value));
+        payload.append("thumbnail", thumbnail);
+      }
+      const response = await axiosClient.patch(`videos/${video.id}/`, payload);
       onSaved(formatVideo(response.data));
     } catch (err) {
-      setError(err.response?.data?.title?.[0] || "Video could not be updated.");
+      const data = err.response?.data;
+      setError(data?.title?.[0] || data?.thumbnail?.[0] || "Video could not be updated.");
     } finally {
       setSaving(false);
     }
@@ -69,6 +95,10 @@ function EditVideoForm({ video, onSaved, onCancel }) {
           </select>
         </label>
       </div>
+      <label>
+        Thumbnail (optional, JPG/PNG/WEBP up to 5 MB)
+        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleThumbnail} />
+      </label>
       {error && <p role="alert" className="form-error">{error}</p>}
       <div className="your-video-edit-actions">
         <button type="button" onClick={onCancel}>Cancel</button>

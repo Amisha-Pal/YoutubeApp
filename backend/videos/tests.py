@@ -1,5 +1,8 @@
+import io
 import shutil
 import tempfile
+
+from PIL import Image
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -97,6 +100,29 @@ class VideoDetailTests(BaseTestCase):
         self.client.force_authenticate(self.owner)
         self.assertEqual(self.client.get(self.detail(self.private)).status_code, 200)
         self.assertEqual(self.client.get(self.detail(self.processing)).status_code, 200)
+
+    def test_thumbnail_replacement_removes_old_file_and_keeps_status(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (4, 4), "red").save(buffer, format="PNG")
+        png = buffer.getvalue()
+        self.public.thumbnail = SimpleUploadedFile("old.png", png, content_type="image/png")
+        self.public.save()
+        old_name = self.public.thumbnail.name
+        storage = self.public.thumbnail.storage
+        self.assertTrue(storage.exists(old_name))
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.patch(
+            reverse("videos:video-detail", args=[self.public.id]),
+            {"title": "New", "thumbnail": SimpleUploadedFile("new.png", png, content_type="image/png")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.public.refresh_from_db()
+        self.assertNotEqual(self.public.thumbnail.name, old_name)
+        self.assertTrue(storage.exists(self.public.thumbnail.name))
+        self.assertFalse(storage.exists(old_name))
+        self.assertEqual(self.public.status, Video.Status.PUBLISHED)
 
     def test_owner_can_edit_and_delete(self):
         self.client.force_authenticate(self.owner)
