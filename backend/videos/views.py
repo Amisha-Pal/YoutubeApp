@@ -227,6 +227,21 @@ class VideoDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         return annotate_video_stats(queryset, user)
 
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        # Processing may have finished since this instance was loaded; keep
+        # the worker's fields instead of overwriting them with stale values.
+        instance.refresh_from_db(
+            fields=["status", "duration", "video_qualities"]
+        )
+        old_thumbnail = instance.thumbnail.name if instance.thumbnail else ""
+
+        video = serializer.save()
+
+        new_thumbnail = video.thumbnail.name if video.thumbnail else ""
+        if old_thumbnail and old_thumbnail != new_thumbnail:
+            video.thumbnail.storage.delete(old_thumbnail)
+
     def perform_destroy(self, instance):
         delete_video_files(instance)
         instance.delete()
