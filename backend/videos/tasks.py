@@ -231,6 +231,9 @@ def process_uploaded_video(video_id):
         video.status = Video.Status.PUBLISHED
         video.save(update_fields=["duration", "status"])
 
+        # Owner may have changed visibility while processing ran.
+        video.refresh_from_db(fields=["visibility", "title"])
+
                 # Notify only subscribers who have enabled new video notifications.
         if (
             not already_published
