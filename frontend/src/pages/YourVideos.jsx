@@ -83,7 +83,7 @@ export default function YourVideos() {
   const [loading, setLoading] = useState(isLoggedIn());
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [nextPage, setNextPage] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function YourVideos() {
         if (cancelled) return;
         const data = response.data;
         setVideos((data.results || data).map(formatVideo));
-        setNextPage(data.next ? 2 : null);
+        setHasMore(Boolean(data.next));
       })
       .catch(() => !cancelled && setError("Your videos could not be loaded."))
       .finally(() => !cancelled && setLoading(false));
@@ -107,14 +107,21 @@ export default function YourVideos() {
   async function loadMore() {
     try {
       setLoadingMore(true);
+      // Derive the page from what is loaded so deletions don't skip uploads.
+      const page = Math.floor(videos.length / PAGE_SIZE) + 1;
       const response = await axiosClient.get("videos/mine/", {
-        params: { page_size: PAGE_SIZE, page: nextPage },
+        params: { page_size: PAGE_SIZE, page },
       });
-      setVideos((previous) => [
-        ...previous,
-        ...response.data.results.map(formatVideo),
-      ]);
-      setNextPage(response.data.next ? nextPage + 1 : null);
+      setVideos((previous) => {
+        const seen = new Set(previous.map((video) => video.id));
+        return [
+          ...previous,
+          ...response.data.results
+            .map(formatVideo)
+            .filter((video) => !seen.has(video.id)),
+        ];
+      });
+      setHasMore(Boolean(response.data.next));
     } catch {
       setError("More videos could not be loaded.");
     } finally {
@@ -196,7 +203,7 @@ export default function YourVideos() {
                     )}
                   </article>
                 ))}
-                {nextPage && (
+                {hasMore && (
                   <div className="load-more-container">
                     <button type="button" className="load-more-btn" onClick={loadMore} disabled={loadingMore}>
                       {loadingMore ? "Loading..." : "Load More"}
