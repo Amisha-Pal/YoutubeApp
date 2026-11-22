@@ -304,7 +304,11 @@ class SubscribedChannelsView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            User.objects.filter(subscribers__subscriber=self.request.user)
+            User.objects.filter(
+                id__in=Subscription.objects.filter(
+                    subscriber=self.request.user
+                ).values("channel")
+            )
             .select_related("channel_profile")
             .annotate(subscribers_total=Count("subscribers", distinct=True))
             .order_by("username")
