@@ -124,6 +124,19 @@ export default function VideoPlayer({
     );
   }, []);
 
+  // Restore the viewer's last volume/mute so autoplayed videos keep it.
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    const savedVolume = Number(localStorage.getItem("playerVolume"));
+    if (localStorage.getItem("playerVolume") !== null && Number.isFinite(savedVolume)) {
+      videoElement.volume = Math.min(1, Math.max(0, savedVolume));
+      if (savedVolume > 0) lastVolumeRef.current = savedVolume;
+    }
+    videoElement.muted = localStorage.getItem("playerMuted") === "true";
+  }, [videoRef]);
+
   useEffect(
     () => () => {
       window.clearTimeout(hideTimerRef.current);
@@ -523,6 +536,8 @@ export default function VideoPlayer({
         onVolumeChange={(event) => {
           setVolume(event.currentTarget.volume);
           setMuted(event.currentTarget.muted);
+          localStorage.setItem("playerVolume", String(event.currentTarget.volume));
+          localStorage.setItem("playerMuted", String(event.currentTarget.muted));
         }}
         onLoadedMetadata={handleLoadedMetadata}
         onLoadStart={() => {
