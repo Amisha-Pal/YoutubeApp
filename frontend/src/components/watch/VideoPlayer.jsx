@@ -84,6 +84,9 @@ export default function VideoPlayer({
   const pendingPlaybackRef = useRef(null);
 
   const [activeSrc, setActiveSrc] = useState(src);
+  // Native autoplay applies to the first source only; quality switches
+  // restore the previous play/pause state themselves.
+  const [nativeAutoPlay, setNativeAutoPlay] = useState(autoPlay);
   const [selectedQuality, setSelectedQuality] = useState("Auto");
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -257,6 +260,7 @@ export default function VideoPlayer({
       currentTime: videoElement.currentTime,
       wasPlaying: !videoElement.paused,
     };
+    setNativeAutoPlay(false);
     setActiveSrc(absoluteSrc);
   };
 
@@ -497,7 +501,7 @@ export default function VideoPlayer({
         className="yt-player-video"
         src={activeSrc}
         poster={poster}
-        autoPlay={autoPlay}
+        autoPlay={nativeAutoPlay}
         playsInline
         preload="metadata"
         aria-label={title ? `Video: ${title}` : "Video player"}
