@@ -133,7 +133,12 @@ export default function VideoPlayer({
     const savedVolume = Number(localStorage.getItem("playerVolume"));
     if (localStorage.getItem("playerVolume") !== null && Number.isFinite(savedVolume)) {
       videoElement.volume = Math.min(1, Math.max(0, savedVolume));
-      if (savedVolume > 0) lastVolumeRef.current = savedVolume;
+    }
+    const savedAudibleVolume = Number(localStorage.getItem("playerLastVolume"));
+    if (savedAudibleVolume > 0 && savedAudibleVolume <= 1) {
+      lastVolumeRef.current = savedAudibleVolume;
+    } else if (savedVolume > 0) {
+      lastVolumeRef.current = savedVolume;
     }
     videoElement.muted = localStorage.getItem("playerMuted") === "true";
   }, [videoRef]);
@@ -550,6 +555,9 @@ export default function VideoPlayer({
           setMuted(event.currentTarget.muted);
           localStorage.setItem("playerVolume", String(event.currentTarget.volume));
           localStorage.setItem("playerMuted", String(event.currentTarget.muted));
+          if (event.currentTarget.volume > 0) {
+            localStorage.setItem("playerLastVolume", String(event.currentTarget.volume));
+          }
         }}
         onLoadedMetadata={handleLoadedMetadata}
         onLoadStart={() => {
