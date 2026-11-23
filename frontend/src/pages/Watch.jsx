@@ -4,14 +4,10 @@ import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ThumbsUp,
   ThumbsDown,
-  Share2,
-  Download,
-  MoreHorizontal,
   CircleUserRound,
   Check,
   Copy,
   Play,
-  Clock,
   ListPlus,
   Shuffle,
   Repeat,
@@ -20,6 +16,8 @@ import {
 
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
+import VideoPlayer from "../components/watch/VideoPlayer";
+import WatchActions from "../components/watch/WatchActions";
 // import { videos as staticVideos } from "../features/videos/videoData";
 import axiosClient from "../api/axiosClient";
 import API_ENDPOINTS from "../api/endpoints";
@@ -199,6 +197,20 @@ export default function Watch() {
     // Repeat All: playlist ke first video par wapas jao
     if (repeatMode === "all" && playlistQueue.length > 0) {
       handlePlaylistNavigation(0, true);
+      return;
+    }
+
+    // Outside a playlist, continue with the next recommended video.
+    if (playlistQueue.length === 0) {
+      const nextRecommended = relatedVideos.find(
+        (item) => String(item.id) !== String(video?.id)
+      );
+
+      if (nextRecommended) {
+        navigate(`/watch/${nextRecommended.id}`, {
+          state: { autoplay: true },
+        });
+      }
     }
   };
 
@@ -209,93 +221,6 @@ export default function Watch() {
   const countedViewId = useRef(null);
 
   const videoRef = useRef(null);
-
-  const [selectedQuality, setSelectedQuality] = useState("Auto");
-  const [isPictureInPicture, setIsPictureInPicture] = useState(false);
-
-  const [activeVideoUrl, setActiveVideoUrl] = useState("");
-  const pendingPlaybackRef = useRef(null);
-
-  const handleQualityChange = (event) => {
-    const quality = event.target.value;
-    const videoElement = videoRef.current;
-
-    if (!videoElement || !video) return;
-
-    const selectedUrl =
-      quality === "Auto"
-        ? video.videoUrl
-        : video.videoQualities?.[quality];
-
-    if (!selectedUrl) return;
-
-    const qualityUrl = toAbsoluteMediaUrl(selectedUrl);
-
-    if (qualityUrl === videoElement.currentSrc) {
-      setSelectedQuality(quality);
-      return;
-    }
-
-
-    pendingPlaybackRef.current = {
-      currentTime: videoElement.currentTime,
-      wasPlaying: !videoElement.paused,
-    };
-
-    setSelectedQuality(quality);
-    setActiveVideoUrl(qualityUrl);
-  };
-
-  useEffect(() => {
-    const handlePiPEnter = () => {
-      setIsPictureInPicture(true);
-    };
-
-    const handlePiPLeave = () => {
-      setIsPictureInPicture(false);
-    };
-
-    document.addEventListener(
-      "enterpictureinpicture",
-      handlePiPEnter
-    );
-
-    document.addEventListener(
-      "leavepictureinpicture",
-      handlePiPLeave
-    );
-
-    return () => {
-      document.removeEventListener(
-        "enterpictureinpicture",
-        handlePiPEnter
-      );
-
-      document.removeEventListener(
-        "leavepictureinpicture",
-        handlePiPLeave
-      );
-    };
-  }, []);
-
-  const handlePictureInPicture = async () => {
-    const videoElement = videoRef.current;
-
-    if (!videoElement) return;
-
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (document.pictureInPictureEnabled) {
-        await videoElement.requestPictureInPicture();
-      }
-    } catch (error) {
-      console.error("Picture-in-Picture error:", error);
-    }
-  };
-
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
-
 
   const [theaterMode, setTheaterMode] = useState(false);
   // Watch has no persistent sidebar; the menu button opens it as an overlay.
@@ -323,99 +248,6 @@ export default function Watch() {
     setTheaterMode((previous) => !previous);
   };
 
-  // Video Player Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyboardShortcuts = (event) => {
-      const videoElement = videoRef.current;
-
-      if (!videoElement) return;
-
-      // Input fields mein shortcuts disable
-      const tagName = event.target.tagName;
-
-      if (
-        ["INPUT", "TEXTAREA", "SELECT"].includes(tagName) ||
-        event.target.isContentEditable
-      ) {
-        return;
-      }
-
-      switch (event.key.toLowerCase()) {
-        case " ":
-        case "k":
-          event.preventDefault();
-
-          if (videoElement.paused) {
-            videoElement.play();
-          } else {
-            videoElement.pause();
-          }
-          break;
-
-        case "arrowleft":
-          event.preventDefault();
-          videoElement.currentTime = Math.max(
-            0,
-            videoElement.currentTime - 5
-          );
-          break;
-
-        case "arrowright":
-          event.preventDefault();
-          videoElement.currentTime = Math.min(
-            videoElement.duration || Infinity,
-            videoElement.currentTime + 5
-          );
-          break;
-
-        case "arrowup":
-          event.preventDefault();
-          videoElement.volume = Math.min(
-            1,
-            videoElement.volume + 0.05
-          );
-          break;
-
-        case "arrowdown":
-          event.preventDefault();
-          videoElement.volume = Math.max(
-            0,
-            videoElement.volume - 0.05
-          );
-          break;
-
-        case "m":
-          videoElement.muted = !videoElement.muted;
-          break;
-
-        case "t":
-          handleToggleTheaterMode();
-          break;
-
-        case "f":
-          event.preventDefault();
-
-          if (document.fullscreenElement) {
-            document.exitFullscreen();
-          } else {
-            videoElement.requestFullscreen();
-          }
-          break;
-
-        default:
-          break;
-      }
-    };
-
-    // Capture phase runs before the native <video controls> key handling, so
-    // preventDefault stops the browser from applying the same key twice.
-    window.addEventListener("keydown", handleKeyboardShortcuts, true);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyboardShortcuts, true);
-    };
-  }, []);
-
   const handleToggleAutoplay = () => {
     setAutoplayEnabled((previous) => {
       const next = !previous;
@@ -423,19 +255,6 @@ export default function Watch() {
       return next;
     });
   };
-
-  const playbackSpeeds = [
-    0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2,
-  ];
-
-  function handlePlaybackSpeedChange(event) {
-    const speed = Number(event.target.value);
-    setPlaybackSpeed(speed);
-
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-    }
-  }
 
   useEffect(() => {
     let isMounted = true;
@@ -599,8 +418,6 @@ export default function Watch() {
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState("");
   const [replyInputs, setReplyInputs] = useState({});
-  const [videoLoading, setVideoLoading] = useState(true);
-  const [videoError, setVideoError] = useState(false);
 
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -852,7 +669,9 @@ export default function Watch() {
     try {
       setShareMessage("Video download ho rahi hai...");
 
-      const response = await fetch(video.videoUrl);
+      const downloadUrl =
+        videoRef.current?.currentSrc || toAbsoluteMediaUrl(video.videoUrl);
+      const response = await fetch(downloadUrl);
 
       if (!response.ok) {
         throw new Error("Video download failed");
@@ -863,7 +682,14 @@ export default function Watch() {
 
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = `${video.title || "video"}.mp4`;
+      const extension =
+        new URL(downloadUrl, window.location.href).pathname
+          .split(".")
+          .pop()
+          ?.toLowerCase() || "mp4";
+      const safeTitle =
+        (video.title || "video").replace(/[\\/:*?"<>|]+/g, "").trim() || "video";
+      link.download = `${safeTitle}.${extension.length <= 5 ? extension : "mp4"}`;
 
       document.body.appendChild(link);
       link.click();
@@ -1194,73 +1020,21 @@ export default function Watch() {
           {/* Video player */}
           <div className="player-container">
             {video.videoUrl ? (
-              <video
+              <VideoPlayer
                 key={video.id}
-                ref={videoRef}
-                controls
-                playsInline
-                autoPlay={Boolean(location.state?.autoplay)}
-                onEnded={handlePlaylistVideoEnded}
+                videoRef={videoRef}
+                src={video.videoUrl}
+                qualities={video.videoQualities}
                 poster={video.thumbnail}
-                src={activeVideoUrl || video.videoUrl}
-                onLoadedMetadata={() => {
-                  const pending = pendingPlaybackRef.current;
-                  const videoElement = videoRef.current;
-
-                  if (!pending || !videoElement) return;
-
-                  const targetTime = Math.min(
-                    pending.currentTime,
-                    Math.max(0, videoElement.duration - 1)
-                  );
-
-
-                  // Seek ko thoda delay karke browser ko metadata process karne do.
-                  requestAnimationFrame(() => {
-                    videoElement.currentTime = targetTime;
-                  });
-                }}
-
-                onSeeked={() => {
-                  const pending = pendingPlaybackRef.current;
-                  const videoElement = videoRef.current;
-
-                  if (!pending || !videoElement) return;
-
-
-                  // Position sahi restore hone par hi pending clear karo.
-                  if (Math.abs(videoElement.currentTime - pending.currentTime) < 1) {
-                    pendingPlaybackRef.current = null;
-
-                    if (pending.wasPlaying) {
-                      videoElement.play().catch(console.error);
-                    }
-                  }
-                }}
-                preload="metadata"
-                onLoadStart={() => {
-                  setVideoLoading(true);
-                  setVideoError(false);
-                }}
-                onCanPlay={() => {
-                  setVideoLoading(false);
-                  setVideoError(false);
-                }}
+                title={video.title}
+                autoPlay={Boolean(location.state?.autoplay)}
+                autoplayEnabled={autoplayEnabled}
+                onToggleAutoplay={handleToggleAutoplay}
+                cinemaMode={theaterMode}
+                onToggleCinemaMode={handleToggleTheaterMode}
+                onEnded={handlePlaylistVideoEnded}
                 onPlay={handleVideoPlay}
-                onError={() => {
-                  setVideoLoading(false);
-                  setVideoError(true);
-                }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  aspectRatio: "16 / 9",
-                  backgroundColor: "#000",
-                  borderRadius: "12px",
-                }}
-              >
-                Your browser does not support video playback.
-              </video>
+              />
             ) : (
               <div
                 style={{
@@ -1305,95 +1079,6 @@ export default function Watch() {
               </div>
             )}
           </div>
-
-          <div className="watch-player-settings">
-            <div className="playback-speed-control">
-              <label htmlFor="playback-speed">Playback Speed:</label>
-
-              <select
-                id="playback-speed"
-                value={playbackSpeed}
-                onChange={handlePlaybackSpeedChange}
-              >
-                {playbackSpeeds.map((speed) => (
-                  <option key={speed} value={speed}>
-                    {speed === 1 ? "Normal" : `${speed}x`}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="video-quality-control">
-              <label htmlFor="video-quality">Quality:</label>
-
-              <select
-                id="video-quality"
-                value={selectedQuality}
-                onChange={handleQualityChange}
-              >
-                <option value="Auto">Auto</option>
-
-                {["360p", "480p", "720p", "1080p"].map((quality) =>
-                  video.videoQualities?.[quality] ? (
-                    <option key={quality} value={quality}>
-                      {quality}
-                    </option>
-                  ) : null
-                )}
-              </select>
-            </div>
-
-            <div className="autoplay-control">
-              <span>Autoplay</span>
-
-              <button
-                type="button"
-                className={`autoplay-toggle ${autoplayEnabled ? "active" : ""}`}
-                onClick={handleToggleAutoplay}
-                aria-label={`Turn autoplay ${autoplayEnabled ? "off" : "on"}`}
-                aria-pressed={autoplayEnabled}
-              >
-                <span className="autoplay-toggle-knob" />
-              </button>
-
-              <span>{autoplayEnabled ? "On" : "Off"}</span>
-            </div>
-            <button
-              type="button"
-              className="pip-button"
-              onClick={handlePictureInPicture}
-              disabled={
-                !document.pictureInPictureEnabled ||
-                !video.videoUrl
-              }
-              title={
-                isPictureInPicture
-                  ? "Exit Picture-in-Picture"
-                  : "Enter Picture-in-Picture"
-              }
-            >
-              {isPictureInPicture ? "Exit PiP" : "Picture in Picture"}
-            </button>
-            <button
-              type="button"
-              className={`theater-mode-button ${theaterMode ? "active" : ""}`}
-              onClick={handleToggleTheaterMode}
-              aria-pressed={theaterMode}
-              title={theaterMode ? "Exit Theater Mode" : "Enter Theater Mode"}
-            >
-              {theaterMode ? "Exit Theater Mode" : "Theater Mode"}
-            </button>
-          </div>
-
-          {videoLoading && video.videoUrl && !videoError && (
-            <p role="status">Video load ho rahi hai...</p>
-          )}
-
-          {videoError && (
-            <p role="alert">
-              Video load nahi ho payi. Internet ya video URL check karo.
-            </p>
-          )}
 
           {/* Playlist Player Controls */}
           {playlistQueue.length > 0 && (
@@ -1515,69 +1200,19 @@ export default function Watch() {
                 )}
             </div>
 
-            <div className="action-buttons">
-              <button
-                type="button"
-                className={userReaction === "like" ? "active-action" : ""}
-                onClick={() => handleReaction("like")}
-                aria-pressed={userReaction === "like"}
-                disabled={reactionLoading}
-                title="Like"
-              >
-                <ThumbsUp size={19} />
-                Like {likesCount > 0 && likesCount.toLocaleString("en-IN")}
-              </button>
-
-              <button
-                type="button"
-                className={userReaction === "dislike" ? "active-action" : ""}
-                onClick={() => handleReaction("dislike")}
-                aria-pressed={userReaction === "dislike"}
-                disabled={reactionLoading}
-                title="Dislike"
-              >
-                <ThumbsDown size={19} />
-                Dislike {dislikesCount > 0 && dislikesCount.toLocaleString("en-IN")}
-              </button>
-
-              <button type="button" onClick={handleShare}>
-                <Share2 size={19} />
-                Share
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenPlaylistPicker}
-                title="Save to Playlist"
-              >
-                <ListPlus size={19} />
-                Save to Playlist
-              </button>
-
-              <button
-                type="button"
-                onClick={handleWatchLater}
-                className={isInWatchLater(video.id) ? "active-action" : ""}
-                aria-pressed={isInWatchLater(video.id)}
-                title={
-                  isInWatchLater(video.id)
-                    ? "Remove from Watch Later"
-                    : "Save to Watch Later"
-                }
-              >
-                <Clock size={19} />
-                {isInWatchLater(video.id) ? "Saved" : "Watch Later"}
-              </button>
-
-              <button type="button" onClick={handleDownload}>
-                <Download size={19} />
-                Download
-              </button>
-
-              <button type="button" aria-label="More options">
-                <MoreHorizontal size={20} />
-              </button>
-            </div>
+            <WatchActions
+              video={video}
+              userReaction={userReaction}
+              likesCount={likesCount}
+              dislikesCount={dislikesCount}
+              reactionLoading={reactionLoading}
+              onReact={handleReaction}
+              onShare={handleShare}
+              saved={isInWatchLater(video.id)}
+              onToggleSave={handleWatchLater}
+              onDownload={handleDownload}
+              onSaveToPlaylist={handleOpenPlaylistPicker}
+            />
           </div>
 
           {shareMessage && (
