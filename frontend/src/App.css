@@ -5358,8 +5358,8 @@ a {
 }
 
 /* ---- Watch: action row ---- */
-.watch-video-actions { flex-wrap: nowrap; justify-content: space-between; gap: 12px 16px; }
-.watch-channel { flex: 0 1 auto; }
+.watch-video-actions { flex-wrap: wrap; justify-content: space-between; gap: 12px 16px; }
+.watch-channel { flex: 0 1 auto; min-width: min-content; max-width: 100%; }
 .watch-channel > div { min-width: 0; }
 .watch-channel h3,
 .watch-channel p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -5432,7 +5432,6 @@ a {
 }
 
 @media (max-width: 760px) {
-  .watch-video-actions { flex-wrap: wrap; }
   .watch-actions { width: 100%; flex-wrap: wrap; justify-content: flex-start; margin-left: 0; }
 }
 
