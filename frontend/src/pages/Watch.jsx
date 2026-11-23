@@ -202,13 +202,18 @@ export default function Watch() {
 
     // Outside a playlist, continue with the next recommended video.
     if (playlistQueue.length === 0) {
+      // Skip videos already reached by this autoplay chain to avoid A→B→A loops.
+      const autoplayHistory = [
+        ...(location.state?.autoplayHistory || []),
+        String(video?.id),
+      ].slice(-50);
       const nextRecommended = relatedVideos.find(
-        (item) => String(item.id) !== String(video?.id)
+        (item) => !autoplayHistory.includes(String(item.id))
       );
 
       if (nextRecommended) {
         navigate(`/watch/${nextRecommended.id}`, {
-          state: { autoplay: true },
+          state: { autoplay: true, autoplayHistory },
         });
       }
     }
