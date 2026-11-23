@@ -111,7 +111,7 @@ export default function WatchActions({
         className={`watch-action-btn watch-label-btn ${saved ? "active" : ""}`}
         onClick={onToggleSave}
         aria-pressed={saved}
-        aria-label="Save to Watch Later"
+        aria-label={saved ? "Saved to Watch Later" : "Save to Watch Later"}
         title={saved ? "Remove from Watch Later" : "Save to Watch Later"}
       >
         {saved ? <BookmarkCheck size={20} /> : <Bookmark size={20} />}
