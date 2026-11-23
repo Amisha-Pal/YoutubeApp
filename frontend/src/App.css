@@ -5353,7 +5353,8 @@ a {
   .yt-player-progress::-moz-range-thumb { transform: scale(1); }
 }
 @media (max-width: 400px) {
-  .player-time { display: none; }
+  .player-time { font-size: 11px; margin-left: 2px; }
+  .player-control-btn { width: 36px; }
 }
 
 /* ---- Watch: action row ---- */
