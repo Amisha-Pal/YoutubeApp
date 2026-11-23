@@ -16,7 +16,7 @@ const REPORT_REASONS = [
   "Legal issue",
 ];
 
-export default function ReportDialog({ video, onClose }) {
+export default function ReportDialog({ video, onClose, returnFocusRef }) {
   const [reason, setReason] = useState("");
   const [details, setDetails] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -29,7 +29,7 @@ export default function ReportDialog({ video, onClose }) {
   };
 
   return (
-    <Dialog title="Report video" onClose={onClose} className="report-dialog">
+    <Dialog title="Report video" onClose={onClose} returnFocusRef={returnFocusRef} className="report-dialog">
       <form onSubmit={handleSubmit}>
         <p className="report-video-title">{video.title}</p>
 

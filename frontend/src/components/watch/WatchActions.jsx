@@ -162,10 +162,18 @@ export default function WatchActions({
       </div>
 
       {dialog === "thanks" && (
-        <ThanksDialog video={video} onClose={() => setDialog(null)} />
+        <ThanksDialog
+          video={video}
+          onClose={() => setDialog(null)}
+          returnFocusRef={menuButtonRef}
+        />
       )}
       {dialog === "report" && (
-        <ReportDialog video={video} onClose={() => setDialog(null)} />
+        <ReportDialog
+          video={video}
+          onClose={() => setDialog(null)}
+          returnFocusRef={menuButtonRef}
+        />
       )}
     </div>
   );

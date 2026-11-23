@@ -1,7 +1,13 @@
 import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 
-export default function Dialog({ title, onClose, children, className = "" }) {
+export default function Dialog({
+  title,
+  onClose,
+  children,
+  className = "",
+  returnFocusRef,
+}) {
   const titleId = useId();
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -12,6 +18,7 @@ export default function Dialog({ title, onClose, children, className = "" }) {
 
   useEffect(() => {
     const previouslyFocused = document.activeElement;
+    const returnTarget = returnFocusRef?.current || previouslyFocused;
     dialogRef.current?.focus();
 
     const handleKeyDown = (event) => {
@@ -50,9 +57,9 @@ export default function Dialog({ title, onClose, children, className = "" }) {
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus?.();
+      returnTarget?.focus?.();
     };
-  }, []);
+  }, [returnFocusRef]);
 
   return (
     <div className="watch-dialog-backdrop" onMouseDown={onClose}>

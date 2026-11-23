@@ -5,12 +5,12 @@ import Dialog from "./Dialog";
 
 const AMOUNTS = [20, 50, 100, 200, 500];
 
-export default function ThanksDialog({ video, onClose }) {
+export default function ThanksDialog({ video, onClose, returnFocusRef }) {
   const [amount, setAmount] = useState(AMOUNTS[1]);
   const [message, setMessage] = useState("");
 
   return (
-    <Dialog title="Thanks" onClose={onClose} className="thanks-dialog">
+    <Dialog title="Thanks" onClose={onClose} returnFocusRef={returnFocusRef} className="thanks-dialog">
       <div className="thanks-hero">
         <HandHeart size={36} />
         <div>
