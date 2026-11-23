@@ -97,8 +97,9 @@ export default function WatchActions({
 
       <button
         type="button"
-        className="watch-action-btn"
+        className="watch-action-btn watch-label-btn"
         onClick={onShare}
+        aria-label="Share"
         title="Share"
       >
         <Share2 size={20} />
@@ -107,9 +108,10 @@ export default function WatchActions({
 
       <button
         type="button"
-        className={`watch-action-btn ${saved ? "active" : ""}`}
+        className={`watch-action-btn watch-label-btn ${saved ? "active" : ""}`}
         onClick={onToggleSave}
         aria-pressed={saved}
+        aria-label="Save to Watch Later"
         title={saved ? "Remove from Watch Later" : "Save to Watch Later"}
       >
         {saved ? <BookmarkCheck size={20} /> : <Bookmark size={20} />}

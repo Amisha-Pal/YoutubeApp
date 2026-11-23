@@ -5358,8 +5358,13 @@ a {
 }
 
 /* ---- Watch: action row ---- */
-.watch-video-actions { justify-content: flex-start; gap: 12px 16px; }
-.watch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.watch-video-actions { flex-wrap: nowrap; justify-content: space-between; gap: 12px 16px; }
+.watch-channel { flex: 0 1 auto; }
+.watch-channel > div { min-width: 0; }
+.watch-channel h3,
+.watch-channel p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-channel .subscribe-button { flex-shrink: 0; }
+.watch-actions { display: flex; flex-wrap: nowrap; flex-shrink: 0; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
 .watch-action-btn {
   display: inline-flex;
   align-items: center;
@@ -5421,10 +5426,20 @@ a {
 @keyframes watch-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 @media (max-width: 600px) {
-  .watch-video-actions { gap: 12px; }
-  .watch-actions { width: 100%; }
+
   .watch-action-btn { padding: 0 12px; }
   .watch-more-menu { position: fixed; top: auto; left: 8px; right: 8px; bottom: 8px; border-radius: 16px; }
+}
+
+@media (max-width: 760px) {
+  .watch-video-actions { flex-wrap: wrap; }
+  .watch-actions { width: 100%; flex-wrap: wrap; justify-content: flex-start; margin-left: 0; }
+}
+
+@media (max-width: 360px) {
+  .watch-actions { gap: 6px; }
+  .watch-action-btn { padding: 0 10px; }
+  .watch-label-btn > span { display: none; }
 }
 
 /* ---- Watch: Thanks / Report dialogs ---- */
