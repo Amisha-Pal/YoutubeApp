@@ -308,7 +308,12 @@ export default function VideoPlayer({
         return;
       }
       if (isTypingTarget(event.target)) return;
-      if (event.target.closest?.("[role='dialog']")) return;
+      if (
+        event.target.closest?.("[role='dialog']") ||
+        document.querySelector("[aria-modal='true']")
+      ) {
+        return;
+      }
 
       const videoElement = videoRef.current;
       if (!videoElement) return;
