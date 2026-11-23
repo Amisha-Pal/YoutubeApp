@@ -511,7 +511,12 @@ export default function VideoPlayer({
         isFullscreen ? "is-fullscreen" : ""
       }`}
       onMouseMove={revealControls}
-      onMouseLeave={() => playing && !settingsPanel && setControlsVisible(false)}
+      onPointerLeave={(event) => {
+        // Touch taps emit pointerleave too; only a real mouse leaving hides controls.
+        if (event.pointerType === "mouse" && playing && !settingsPanel) {
+          setControlsVisible(false);
+        }
+      }}
       onTouchStart={revealControls}
       onFocus={revealControls}
     >
