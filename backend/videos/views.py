@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from .notification_utils import (
     create_notification,
     send_notification_to_user,
@@ -33,9 +33,70 @@ from .serializers import (
     PlaylistSerializer,
 )
 
+import logging
+import os
+import shutil
+
 from django.contrib.auth import get_user_model
+from django.db.models import Count, OuterRef, Q, Subquery
+from rest_framework.exceptions import ValidationError
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
+
+def annotate_video_stats(queryset, user):
+    queryset = queryset.select_related("owner").annotate(
+        likes_total=Count(
+            "reactions",
+            filter=Q(reactions__reaction=VideoReaction.ReactionType.LIKE),
+            distinct=True,
+        ),
+        dislikes_total=Count(
+            "reactions",
+            filter=Q(reactions__reaction=VideoReaction.ReactionType.DISLIKE),
+            distinct=True,
+        ),
+    )
+    if user is not None and user.is_authenticated:
+        queryset = queryset.annotate(
+            current_user_reaction=Subquery(
+                VideoReaction.objects.filter(
+                    video=OuterRef("pk"),
+                    user=user,
+                ).values("reaction")[:1]
+            )
+        )
+    return queryset
+
+
+def accessible_videos(user):
+    """Videos a user may open directly: public/unlisted, or any of their own."""
+    queryset = Video.objects.filter(
+        status=Video.Status.PUBLISHED,
+        visibility__in=[Video.Visibility.PUBLIC, Video.Visibility.UNLISTED],
+    )
+    if user.is_authenticated:
+        queryset = Video.objects.filter(
+            Q(pk__in=queryset.values("pk")) | Q(owner=user)
+        )
+    return queryset
+
+
+def delete_video_files(video):
+    try:
+        if video.video_file:
+            qualities_dir = os.path.join(
+                os.path.dirname(video.video_file.path),
+                "qualities",
+                str(video.id),
+            )
+            shutil.rmtree(qualities_dir, ignore_errors=True)
+            video.video_file.delete(save=False)
+        if video.thumbnail:
+            video.thumbnail.delete(save=False)
+    except Exception:
+        logger.exception("Failed to delete files for video %s", video.id)
 
 class VideoListCreateView(generics.ListCreateAPIView):
     serializer_class = VideoSerializer
@@ -91,7 +152,10 @@ class VideoListCreateView(generics.ListCreateAPIView):
                 # Filter videos by duration
         duration_filter = self.request.query_params.get("duration", "").strip()
 
-        if duration_filter == "under_4":
+        if duration_filter == "short":
+            queryset = queryset.filter(duration__gt=0, duration__lte=60)
+
+        elif duration_filter == "under_4":
             queryset = queryset.filter(duration__lt=240)
 
         elif duration_filter == "4_to_20":
@@ -108,12 +172,20 @@ class VideoListCreateView(generics.ListCreateAPIView):
 
         if sort_by == "popular":
             queryset = queryset.order_by("-views_count", "-created_at")
+        elif sort_by == "trending":
+            queryset = queryset.filter(
+                created_at__gte=now - timedelta(days=30)
+            ).order_by("-views_count", "-created_at")
         elif sort_by == "oldest":
             queryset = queryset.order_by("created_at")
         else:
             queryset = queryset.order_by("-created_at")
 
-        return queryset.select_related("owner").distinct()
+        return annotate_video_stats(queryset, self.request.user)
+
+    @property
+    def throttle_scope(self):
+        return "upload" if self.request.method == "POST" else None
 
     def get_permissions(self):
         if self.request.method == "GET":
@@ -134,37 +206,124 @@ class VideoListCreateView(generics.ListCreateAPIView):
             lambda: process_uploaded_video.delay(video.id)
         )
 
-class VideoDetailView(generics.RetrieveAPIView):
+class VideoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = VideoSerializer
     lookup_url_kwarg = "video_id"
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
 
-        queryset = Video.objects.filter(
-            status=Video.Status.PUBLISHED
+        if self.request.method in permissions.SAFE_METHODS:
+            queryset = accessible_videos(user)
+        else:
+            queryset = Video.objects.filter(owner=user)
+
+        return annotate_video_stats(queryset, user)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        # Processing may have finished since this instance was loaded; keep
+        # the worker's fields instead of overwriting them with stale values.
+        instance.refresh_from_db(
+            fields=["status", "duration", "video_qualities"]
+        )
+        old_thumbnail = instance.thumbnail.name if instance.thumbnail else ""
+
+        video = serializer.save()
+
+        new_thumbnail = video.thumbnail.name if video.thumbnail else ""
+        if old_thumbnail and old_thumbnail != new_thumbnail:
+            video.thumbnail.storage.delete(old_thumbnail)
+
+    def perform_destroy(self, instance):
+        delete_video_files(instance)
+        instance.delete()
+
+
+class MyVideosView(generics.ListAPIView):
+    """All of the current user's uploads, including processing/private ones."""
+
+    serializer_class = VideoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Video.objects.filter(owner=self.request.user)
+        status_filter = self.request.query_params.get("status", "").strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        return annotate_video_stats(queryset, self.request.user).order_by(
+            "-created_at"
         )
 
-        if user.is_authenticated:
-            return queryset.filter(
-                models.Q(visibility=Video.Visibility.PUBLIC)
-                | models.Q(visibility=Video.Visibility.UNLISTED)
-                | models.Q(owner=user)
-            ).select_related("owner")
 
-        return queryset.filter(
-            visibility=Video.Visibility.PUBLIC
-        ).select_related("owner")
+class LikedVideosView(generics.ListAPIView):
+    serializer_class = VideoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        liked_at = VideoReaction.objects.filter(
+            video=OuterRef("pk"),
+            user=user,
+            reaction=VideoReaction.ReactionType.LIKE,
+        ).values("updated_at")[:1]
+        queryset = (
+            accessible_videos(user)
+            .filter(status=Video.Status.PUBLISHED)
+            .annotate(liked_at=Subquery(liked_at))
+            .filter(liked_at__isnull=False)
+        )
+        return annotate_video_stats(queryset, user).order_by("-liked_at")
+
+
+class SubscriptionFeedView(generics.ListAPIView):
+    serializer_class = VideoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = Video.objects.filter(
+            owner__subscribers__subscriber=user,
+            status=Video.Status.PUBLISHED,
+            visibility=Video.Visibility.PUBLIC,
+        )
+        return annotate_video_stats(queryset, user).order_by("-created_at")
+
+
+class SubscribedChannelsView(generics.ListAPIView):
+    serializer_class = ChannelProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return (
+            User.objects.filter(
+                id__in=Subscription.objects.filter(
+                    subscriber=self.request.user
+                ).values("channel")
+            )
+            .select_related("channel_profile")
+            .annotate(subscribers_total=Count("subscribers", distinct=True))
+            .order_by("username")
+        )
+
 
 class VideoViewCountView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, video_id):
         video = get_object_or_404(
-            Video,
+            accessible_videos(request.user).filter(
+                status=Video.Status.PUBLISHED
+            ),
             id=video_id,
-            status=Video.Status.PUBLISHED,
-            visibility=Video.Visibility.PUBLIC,
         )
 
         Video.objects.filter(id=video.id).update(
@@ -187,10 +346,10 @@ class VideoReactionView(APIView):
 
     def post(self, request, video_id):
         video = get_object_or_404(
-            Video,
+            accessible_videos(request.user).filter(
+                status=Video.Status.PUBLISHED
+            ),
             id=video_id,
-            status=Video.Status.PUBLISHED,
-            visibility=Video.Visibility.PUBLIC,
         )
 
         reaction_type = request.data.get("reaction")
@@ -280,6 +439,10 @@ class IsCommentOwnerOrReadOnly(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
 
+        if request.method == "DELETE":
+            # Video owners can moderate comments on their own videos.
+            return obj.user == request.user or obj.video.owner_id == request.user.id
+
         return obj.user == request.user
 
 
@@ -294,25 +457,10 @@ class CommentListCreateView(generics.ListCreateAPIView):
         return [permissions.IsAuthenticated()]
 
     def get_video(self):
-        user = self.request.user
-
-        queryset = Video.objects.filter(
-            status=Video.Status.PUBLISHED
-        )
-
-        if user.is_authenticated:
-            queryset = queryset.filter(
-                models.Q(visibility=Video.Visibility.PUBLIC)
-                | models.Q(visibility=Video.Visibility.UNLISTED)
-                | models.Q(owner=user)
-            )
-        else:
-            queryset = queryset.filter(
-                visibility=Video.Visibility.PUBLIC
-            )
-
         return get_object_or_404(
-            queryset,
+            accessible_videos(self.request.user).filter(
+                status=Video.Status.PUBLISHED
+            ),
             id=self.kwargs["video_id"],
         )
 
@@ -322,15 +470,17 @@ class CommentListCreateView(generics.ListCreateAPIView):
         return Comment.objects.filter(
             video=video,
             parent__isnull=True,
-        ).select_related("user").prefetch_related("replies__user")
+        ).select_related("user").prefetch_related(
+            "reactions",
+            "replies__user",
+            "replies__reactions",
+        )
 
     def perform_create(self, serializer):
         video = self.get_video()
         parent = serializer.validated_data.get("parent")
 
         if parent and parent.video_id != video.id:
-            from rest_framework.exceptions import ValidationError
-
             raise ValidationError({
                 "parent": "Parent comment must belong to the same video."
             })
@@ -392,7 +542,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Comment.objects.select_related(
             "user",
             "video",
-        ).prefetch_related("replies__user")
+        ).prefetch_related("reactions", "replies__user", "replies__reactions")
 
 
 class CommentReactionView(APIView):
@@ -402,7 +552,9 @@ class CommentReactionView(APIView):
     def post(self, request, comment_id):
 
         comment = get_object_or_404(
-            Comment,
+            Comment.objects.select_related("user", "video").filter(
+                video__in=accessible_videos(request.user)
+            ),
             id=comment_id,
         )
 
@@ -440,26 +592,26 @@ class CommentReactionView(APIView):
 
         else:
             # First time reaction create karo.
-            VideoReaction.objects.create(
-                video=video,
+            CommentReaction.objects.create(
+                comment=comment,
                 user=request.user,
                 reaction=reaction_type,
             )
             user_reaction = reaction_type
 
-            # Notify video owner only when another user likes the video.
+            # Notify the comment author when another user likes their comment.
             if (
-                reaction_type == VideoReaction.ReactionType.LIKE
-                and video.owner != request.user
+                reaction_type == CommentReaction.ReactionType.LIKE
+                and comment.user_id != request.user.id
             ):
                 notification = create_notification(
-                    recipient=video.owner,
+                    recipient=comment.user,
                     sender=request.user,
-                    video=video,
+                    video=comment.video,
                     notification_type=Notification.NotificationType.NEW_LIKE,
                     message=(
-                        f"{request.user.username} liked your video: "
-                        f"{video.title}"
+                        f"{request.user.username} liked your comment on "
+                        f"{comment.video.title}"
                     ),
                 )
 
@@ -591,27 +743,61 @@ class NotificationListView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
+    DEFAULT_PAGE_SIZE = 20
+    MAX_PAGE_SIZE = 100
 
+    def get(self, request):
         notifications = Notification.objects.filter(
             recipient=request.user
         ).select_related(
             "sender",
             "video",
-        )
+        ).order_by("-created_at", "-id")
 
-        serializer = NotificationSerializer(
-            notifications,
-            many=True,
-        )
+        unread_count = notifications.filter(is_read=False).count()
 
-        unread_count = notifications.filter(
-            is_read=False
-        ).count()
+        status_filter = request.query_params.get("status")
+        if status_filter == "unread":
+            notifications = notifications.filter(is_read=False)
+        elif status_filter == "read":
+            notifications = notifications.filter(is_read=True)
+
+        # Cursor: return only notifications older than this one, so items that
+        # arrive or change status meanwhile don't shift later pages.
+        before_id = request.query_params.get("before")
+        if before_id:
+            cursor = Notification.objects.filter(
+                recipient=request.user,
+                id=before_id,
+            ).values("created_at", "id").first() if before_id.isdigit() else None
+            if cursor is None:
+                raise ValidationError({"before": "Unknown notification."})
+            notifications = notifications.filter(
+                Q(created_at__lt=cursor["created_at"])
+                | Q(created_at=cursor["created_at"], id__lt=cursor["id"])
+            )
+
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+            page_size = int(
+                request.query_params.get("page_size", self.DEFAULT_PAGE_SIZE)
+            )
+        except (TypeError, ValueError):
+            raise ValidationError({"detail": "page and page_size must be integers."})
+        page_size = min(max(1, page_size), self.MAX_PAGE_SIZE)
+
+        offset = (page - 1) * page_size
+        # Fetch one extra row to know whether another page exists.
+        rows = list(notifications[offset:offset + page_size + 1])
 
         return Response({
-            "notifications": serializer.data,
+            "notifications": NotificationSerializer(
+                rows[:page_size],
+                many=True,
+            ).data,
             "unread_count": unread_count,
+            "page": page,
+            "has_more": len(rows) > page_size,
         })
 
 class NotificationPreferenceView(APIView):
@@ -692,7 +878,9 @@ class ChannelSearchView(generics.ListAPIView):
             "search", ""
         ).strip()
 
-        queryset = User.objects.all()
+        queryset = User.objects.select_related("channel_profile").annotate(
+            subscribers_total=Count("subscribers", distinct=True)
+        )
 
         if search_query:
             queryset = queryset.filter(
@@ -735,11 +923,19 @@ class ChannelVideosView(generics.ListAPIView):
     def get_queryset(self):
         channel_id = self.kwargs["channel_id"]
 
-        return Video.objects.filter(
+        queryset = Video.objects.filter(
             owner_id=channel_id,
             status=Video.Status.PUBLISHED,
             visibility=Video.Visibility.PUBLIC,
-        ).select_related("owner")
+        )
+        sort_by = self.request.query_params.get("sort", "latest")
+        if sort_by == "popular":
+            queryset = queryset.order_by("-views_count", "-created_at")
+        elif sort_by == "oldest":
+            queryset = queryset.order_by("created_at")
+        else:
+            queryset = queryset.order_by("-created_at")
+        return annotate_video_stats(queryset, self.request.user)
 
 class PlaylistListCreateView(generics.ListCreateAPIView):
 
@@ -751,8 +947,16 @@ class PlaylistListCreateView(generics.ListCreateAPIView):
         queryset = Playlist.objects.select_related(
             "owner"
         ).prefetch_related(
-            "playlist_items__video"
+            "playlist_items__video__owner"
         )
+
+        owner_filter = self.request.query_params.get("owner", "").strip()
+        if owner_filter == "me":
+            if not user.is_authenticated:
+                return queryset.none()
+            return queryset.filter(owner=user)
+        if owner_filter.isdigit():
+            queryset = queryset.filter(owner_id=int(owner_filter))
 
         # Logged-in user apni private playlists bhi dekh sakta hai.
         if user.is_authenticated:
@@ -785,7 +989,7 @@ class PlaylistDetailView(generics.RetrieveUpdateDestroyAPIView):
         queryset = Playlist.objects.select_related(
             "owner"
         ).prefetch_related(
-            "playlist_items__video"
+            "playlist_items__video__owner"
         )
 
         # GET: Public playlists aur apni private playlists.

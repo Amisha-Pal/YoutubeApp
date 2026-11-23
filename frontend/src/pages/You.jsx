@@ -11,9 +11,9 @@ const youOptions = [
   { label: "Your channel", icon: UserRound },
   { label: "History", icon: History, path: "/history" },
   { label: "Playlists", icon: ListVideo, path: "/playlists" },
-  { label: "Your videos", icon: Clapperboard },
+  { label: "Your videos", icon: Clapperboard, path: "/your-videos" },
   { label: "Watch later", icon: Clock, path: "/watch-later" },
-  { label: "Liked videos", icon: ThumbsUp },
+  { label: "Liked videos", icon: ThumbsUp, path: "/liked-videos" },
 ];
 
 export default function You() {

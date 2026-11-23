@@ -4,55 +4,7 @@ import Sidebar from "../components/Sidebar";
 import CategoryBar from "../components/CategoryBar";
 import VideoCard from "../components/VideoCard";
 import axiosClient from "../api/axiosClient";
-
-const FALLBACK_THUMBNAIL =
-  "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=640&h=360&fit=crop";
-
-function formatViews(count) {
-  if (count >= 1000000) {
-    return `${(count / 1000000).toFixed(1)}M`;
-  }
-
-  if (count >= 1000) {
-    return `${(count / 1000).toFixed(1)}K`;
-  }
-
-  return String(count);
-}
-
-function formatDuration(seconds) {
-  if (!seconds || seconds <= 0) return "";
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = seconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(
-      remainingSeconds
-    ).padStart(2, "0")}`;
-  }
-
-  return `${String(minutes).padStart(2, "0")}:${String(
-    remainingSeconds
-  ).padStart(2, "0")}`;
-}
-
-function formatUploadedDate(date) {
-  const uploadedDate = new Date(date);
-  const now = new Date();
-  const difference = now - uploadedDate;
-
-  const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-
-  if (days === 0) return "Today";
-  if (days === 1) return "1 day ago";
-  if (days < 7) return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-  if (days < 365) return `${Math.floor(days / 30)} months ago`;
-
-  return `${Math.floor(days / 365)} years ago`;
-}
+import { formatVideo } from "../utils/format";
 
 export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -88,26 +40,10 @@ export default function Home() {
             page: 1,
           },
         });
-        console.log("HOME VIDEOS API:", response.data);
-        console.log("VIDEO TITLES:", response.data.results.map(v => v.title));
 
         if (isCancelled) return;
 
-        const formattedVideos = response.data.results.map((video) => ({
-          id: video.id,
-          title: video.title,
-          channel: video.owner_username,
-          views: formatViews(video.views_count),
-          uploaded: formatUploadedDate(video.created_at),
-          duration: formatDuration(video.duration),
-          category: video.category,
-          thumbnail: video.thumbnail || FALLBACK_THUMBNAIL,
-          videoUrl: video.video_file,
-          avatar: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(
-            video.owner_username
-          )}`,
-          description: video.description,
-        }));
+        const formattedVideos = response.data.results.map(formatVideo);
 
         setVideos(formattedVideos);
         setPage(1);
@@ -150,21 +86,7 @@ export default function Home() {
         },
       });
 
-      const formattedVideos = response.data.results.map((video) => ({
-        id: video.id,
-        title: video.title,
-        channel: video.owner_username,
-        views: formatViews(video.views_count),
-        uploaded: formatUploadedDate(video.created_at),
-        duration: formatDuration(video.duration),
-        category: video.category,
-        thumbnail: video.thumbnail || FALLBACK_THUMBNAIL,
-        videoUrl: video.video_file,
-        avatar: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(
-          video.owner_username
-        )}`,
-        description: video.description,
-      }));
+      const formattedVideos = response.data.results.map(formatVideo);
 
       setVideos((previousVideos) => [
         ...previousVideos,

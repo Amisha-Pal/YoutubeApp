@@ -1,15 +1,15 @@
 
 export const categories = [
   "All",
-  "Music",
+  "Education",
   "Gaming",
-  "Live",
-  "Programming",
+  "Music",
+  "Entertainment",
+  "Technology",
+  "Sports",
+  "Travel",
   "News",
-  "Podcasts",
-  "Recently uploaded",
-  "Watched",
-  "New to you",
+  "Other",
 ];
 
 export const videos = [

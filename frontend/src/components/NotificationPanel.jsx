@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -14,6 +14,8 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import axiosClient from "../api/axiosClient";
+
+const NOTIFICATION_PAGE_SIZE = 20;
 
 function formatNotificationTime(dateString) {
   if (!dateString) return "";
@@ -77,17 +79,40 @@ export default function NotificationPanel({
   const [notifications, setNotifications] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // Re-render every minute so relative times ("5 min ago") stay fresh.
+  const [, setClockTick] = useState(0);
   const [error, setError] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  async function fetchNotifications() {
+  const statusParam = activeFilter === "all" ? undefined : activeFilter;
+
+  // replace=true loads a fresh first page; otherwise the first page is merged
+  // in so older pages loaded with "Load more" are kept during polling.
+  const fetchNotifications = useCallback(async (replace = false) => {
     try {
-      setLoading(true);
+      const response = await axiosClient.get("videos/notifications/", {
+        params: { page_size: NOTIFICATION_PAGE_SIZE, status: statusParam },
+      });
+      const firstPage = response.data.notifications || [];
+
       setError("");
 
-      const response = await axiosClient.get("videos/notifications/");
-
-      setNotifications(response.data.notifications || []);
+      if (replace || !response.data.has_more) {
+        setNotifications(firstPage);
+        setHasMore(Boolean(response.data.has_more));
+      } else {
+        const firstPageIds = new Set(firstPage.map((item) => item.id));
+        const oldest = new Date(firstPage[firstPage.length - 1].created_at);
+        setNotifications((previous) => [
+          ...firstPage,
+          ...previous.filter(
+            (item) =>
+              !firstPageIds.has(item.id) && new Date(item.created_at) <= oldest
+          ),
+        ]);
+      }
       setUnreadCount(response.data.unread_count || 0);
       onUnreadCountChange?.(response.data.unread_count || 0);
     } catch (err) {
@@ -96,11 +121,42 @@ export default function NotificationPanel({
     } finally {
       setLoading(false);
     }
+  }, [onUnreadCountChange, statusParam]);
+
+  async function loadMoreNotifications() {
+    try {
+      setLoadingMore(true);
+      // Page by cursor (oldest loaded item) so realtime arrivals, deletions
+      // and read-state changes don't shift which items come next.
+      const oldest = notifications[notifications.length - 1];
+      const response = await axiosClient.get("videos/notifications/", {
+        params: {
+          before: oldest?.id,
+          page_size: NOTIFICATION_PAGE_SIZE,
+          status: statusParam,
+        },
+      });
+      setNotifications((previous) => {
+        const seen = new Set(previous.map((item) => item.id));
+        return [
+          ...previous,
+          ...(response.data.notifications || []).filter(
+            (item) => !seen.has(item.id)
+          ),
+        ];
+      });
+      setHasMore(Boolean(response.data.has_more));
+    } catch (err) {
+      console.error("Notification error:", err);
+      setError("More notifications could not be loaded.");
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setCurrentTime(Date.now());
+      setClockTick((tick) => tick + 1);
     }, 60000);
 
     return () => window.clearInterval(timer);
@@ -109,16 +165,17 @@ export default function NotificationPanel({
   useEffect(() => {
     if (!isOpen) return;
 
-    fetchNotifications();
+    const initialTimer = window.setTimeout(() => fetchNotifications(true), 0);
 
     const intervalId = window.setInterval(() => {
       fetchNotifications();
     }, 15000);
 
     return () => {
+      window.clearTimeout(initialTimer);
       window.clearInterval(intervalId);
     };
-  }, [isOpen]);
+  }, [isOpen, fetchNotifications]);
 
   useEffect(() => {
     function handleNewNotification(event) {
@@ -151,9 +208,8 @@ export default function NotificationPanel({
         handleNewNotification
       );
     };
-  }, []);
+  }, [onUnreadCountChange]);
 
-  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const filteredNotifications = notifications.filter((notification) => {
     if (activeFilter === "unread") {
@@ -357,7 +413,13 @@ export default function NotificationPanel({
               type="button"
               className={`notification-filter ${activeFilter === filter ? "active" : ""
                 }`}
-              onClick={() => setActiveFilter(filter)}
+              onClick={() => {
+                if (filter === activeFilter) return;
+                setLoading(true);
+                setNotifications([]);
+                setHasMore(false);
+                setActiveFilter(filter);
+              }}
             >
               {filter === "all"
                 ? "All"
@@ -423,7 +485,8 @@ export default function NotificationPanel({
           ) : error ? (
             <p className="notification-empty">{error}</p>
           ) : filteredNotifications.length > 0 ? (
-            filteredNotifications.map((notification) => (
+            <>
+            {filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
                 className={`notification-item ${!notification.is_read ? "unread" : ""
@@ -474,7 +537,20 @@ export default function NotificationPanel({
                   <Trash2 size={16} />
                 </button>
               </div>
-            ))
+            ))}
+            {hasMore && (
+              <div className="notification-load-more">
+                <button
+                  type="button"
+                  className="load-more-btn"
+                  onClick={loadMoreNotifications}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading..." : "Load more"}
+                </button>
+              </div>
+            )}
+            </>
           ) : (
             <div className="notification-empty">
               <Bell size={38} />

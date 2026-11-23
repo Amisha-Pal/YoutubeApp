@@ -1,3 +1,4 @@
+from django.core.exceptions import SuspiciousFileOperation
 import mimetypes
 import os
 import re
@@ -10,7 +11,7 @@ from django.utils._os import safe_join
 def serve_media(request, path):
     try:
         file_path = safe_join(settings.MEDIA_ROOT, path)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, SuspiciousFileOperation):
         return HttpResponseNotFound()
 
     if not os.path.isfile(file_path):

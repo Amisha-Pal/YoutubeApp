@@ -55,7 +55,6 @@ export default function AuthModal({ isOpen, onClose }) {
             password,
           }
         );
-        console.log("LOGIN RESPONSE:", response.data);
 
         setMessage(
           response.data.message || "Account created successfully."
@@ -74,18 +73,17 @@ export default function AuthModal({ isOpen, onClose }) {
           }
         );
 
-        console.log("LOGIN API RESPONSE:", {
-          access: !!response.data.access,
-          refresh: !!response.data.refresh,
-        });
-
         localStorage.setItem("accessToken", response.data.access);
         localStorage.setItem("refreshToken", response.data.refresh);
 
         handleClose();
         window.location.reload();
       } else {
-        setMessage("Password reset is not configured yet.");
+        const response = await axiosClient.post(
+          API_ENDPOINTS.AUTH.PASSWORD_RESET,
+          { email: email.trim().toLowerCase() }
+        );
+        setMessage(response.data.message);
       }
     } catch (error) {
       const data = error.response?.data;

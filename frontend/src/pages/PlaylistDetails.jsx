@@ -59,14 +59,12 @@ export default function PlaylistDetails() {
 
   const fetchPlaylist = async () => {
     try {
-      setLoading(true);
-      setError("");
-
       const response = await axiosClient.get(
         API_ENDPOINTS.PLAYLISTS.DETAIL(playlistId)
       );
 
       setPlaylist(response.data);
+      setError("");
     } catch (err) {
       console.error("Playlist detail error:", err);
 
@@ -80,7 +78,9 @@ export default function PlaylistDetails() {
   };
 
   useEffect(() => {
-    fetchPlaylist();
+    const timer = window.setTimeout(fetchPlaylist, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playlistId]);
 
   // Playlist update karna

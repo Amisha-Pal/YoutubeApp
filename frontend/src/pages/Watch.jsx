@@ -19,9 +19,11 @@ import {
 } from "lucide-react";
 
 import Navbar from "../components/Navbar";
+import Sidebar from "../components/Sidebar";
 // import { videos as staticVideos } from "../features/videos/videoData";
 import axiosClient from "../api/axiosClient";
 import API_ENDPOINTS from "../api/endpoints";
+import { toAbsoluteMediaUrl } from "../api/config";
 import { getCurrentUserId } from "../utils/auth";
 import { useHistory } from "../context/HistoryContext";
 
@@ -159,6 +161,20 @@ export default function Watch() {
     });
   };
 
+  const [autoplayEnabled, setAutoplayEnabled] = useState(
+    () => localStorage.getItem("autoplayEnabled") !== "false"
+  );
+
+  const [userReaction, setUserReaction] = useState(null);
+  const [likesCount, setLikesCount] = useState(0);
+  const [dislikesCount, setDislikesCount] = useState(0);
+  const [reactionLoading, setReactionLoading] = useState(false);
+
+  const [subscribed, setSubscribed] = useState(false);
+
+  const [subscribersCount, setSubscribersCount] = useState(0);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+
   // Video khatam hone par automatically next video
   // Video complete hone par Repeat / Auto Next
   const handlePlaylistVideoEnded = (event) => {
@@ -213,23 +229,13 @@ export default function Watch() {
 
     if (!selectedUrl) return;
 
-    const qualityUrl = new URL(
-      selectedUrl,
-      "http://127.0.0.1:8000"
-    ).href;
+    const qualityUrl = toAbsoluteMediaUrl(selectedUrl);
 
     if (qualityUrl === videoElement.currentSrc) {
       setSelectedQuality(quality);
       return;
     }
 
-    console.log("QUALITY SWITCH:", {
-      quality,
-      currentTime: videoElement.currentTime,
-      duration: videoElement.duration,
-      paused: videoElement.paused,
-      currentSrc: videoElement.currentSrc,
-    });
 
     pendingPlaybackRef.current = {
       currentTime: videoElement.currentTime,
@@ -239,12 +245,6 @@ export default function Watch() {
     setSelectedQuality(quality);
     setActiveVideoUrl(qualityUrl);
   };
-
-  useEffect(() => {
-    setSelectedQuality("Auto");
-    setActiveVideoUrl("");
-    pendingPlaybackRef.current = null;
-  }, [id]);
 
   useEffect(() => {
     const handlePiPEnter = () => {
@@ -296,11 +296,28 @@ export default function Watch() {
 
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
-  const [autoplayEnabled, setAutoplayEnabled] = useState(
-    () => localStorage.getItem("autoplayEnabled") !== "false"
-  );
 
   const [theaterMode, setTheaterMode] = useState(false);
+  // Watch has no persistent sidebar; the menu button opens it as an overlay.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const watchNavigation = (
+    <>
+      <Navbar onMenuClick={() => setSidebarOpen((previous) => !previous)} />
+      {sidebarOpen && (
+        <>
+          <div
+            className="watch-sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="watch-sidebar-overlay">
+            <Sidebar isOpen />
+          </div>
+        </>
+      )}
+    </>
+  );
 
   const handleToggleTheaterMode = () => {
     setTheaterMode((previous) => !previous);
@@ -390,10 +407,12 @@ export default function Watch() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyboardShortcuts);
+    // Capture phase runs before the native <video controls> key handling, so
+    // preventDefault stops the browser from applying the same key twice.
+    window.addEventListener("keydown", handleKeyboardShortcuts, true);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyboardShortcuts);
+      window.removeEventListener("keydown", handleKeyboardShortcuts, true);
     };
   }, []);
 
@@ -438,6 +457,9 @@ export default function Watch() {
           ownerId: data.owner,
           title: data.title,
           description: data.description,
+          category: data.category,
+          status: data.status,
+          visibility: data.visibility,
           channel: data.owner_username,
           views: `${data.views_count} `,
           uploaded: new Date(data.created_at).toLocaleDateString(),
@@ -519,10 +541,7 @@ export default function Watch() {
     const accessToken = localStorage.getItem("accessToken");
 
     // Login nahi hai toh API call mat karo
-    if (!accessToken) {
-      setSubscribed(false);
-      return;
-    }
+    if (!accessToken) return;
 
     async function fetchSubscription() {
       try {
@@ -567,15 +586,6 @@ export default function Watch() {
     }
   }
 
-  const [userReaction, setUserReaction] = useState(null);
-  const [likesCount, setLikesCount] = useState(0);
-  const [dislikesCount, setDislikesCount] = useState(0);
-  const [reactionLoading, setReactionLoading] = useState(false);
-
-  const [subscribed, setSubscribed] = useState(false);
-
-  const [subscribersCount, setSubscribersCount] = useState(0);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
   const { addToWatchLater, removeFromWatchLater, isInWatchLater, } = useWatchLater();
 
@@ -645,15 +655,47 @@ export default function Watch() {
   if (!video) {
     return (
       <div className="app-shell">
-        <Navbar />
+        {watchNavigation}
 
         <main className="watch-not-found">
-          <h2>Video not found</h2>
-          <p>Ye video abhi available nahi hai.</p>
+          {pageLoading ? (
+            <p role="status">Loading video...</p>
+          ) : (
+            <>
+              <h2>Video not found</h2>
+              <p>{pageError || "Ye video abhi available nahi hai."}</p>
+            </>
+          )}
           <Link to="/">Go to Home</Link>
         </main>
       </div>
     );
+  }
+
+  const currentUserId = getCurrentUserId();
+  const isVideoOwner = String(video.ownerId) === String(currentUserId);
+
+  async function handleDeleteReply(parentId, replyId) {
+    if (!window.confirm("Delete this reply?")) return;
+
+    try {
+      await axiosClient.delete(`videos/comments/${replyId}/`);
+      setComments((previous) =>
+        previous.map((item) =>
+          item.id === parentId
+            ? {
+                ...item,
+                replies: (item.replies || []).filter(
+                  (reply) => reply.id !== replyId
+                ),
+              }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Reply delete failed:", error);
+      setCommentError("Reply delete nahi ho paya.");
+    }
   }
 
   function handleWatchLater() {
@@ -681,14 +723,11 @@ export default function Watch() {
     setShowPlaylistPicker(true);
 
     try {
-      const response = await axiosClient.get(API_ENDPOINTS.PLAYLISTS.LIST);
+      const response = await axiosClient.get(API_ENDPOINTS.PLAYLISTS.LIST, {
+        params: { owner: "me" },
+      });
 
-      const playlists = response.data.results || response.data;
-      const currentUserId = getCurrentUserId();
-
-      const myPlaylists = playlists.filter(
-        (playlist) => String(playlist.owner) === String(currentUserId)
-      );
+      const myPlaylists = response.data.results || response.data;
 
       setUserPlaylists(myPlaylists);
     } catch (error) {
@@ -1140,8 +1179,6 @@ export default function Watch() {
           views: response.data.views_count.toLocaleString("en-IN"),
         };
       });
-
-      console.log("View counted:", response.data.views_count);
     } catch (error) {
       console.error("View counting failed:", error);
       countedViewId.current = null;
@@ -1150,7 +1187,7 @@ export default function Watch() {
 
   return (
     <div className="app-shell">
-      <Navbar />
+      {watchNavigation}
 
       <main className={`watch-layout ${theaterMode ? "theater-mode" : ""}`}>
         <section className="watch-main">
@@ -1177,11 +1214,6 @@ export default function Watch() {
                     Math.max(0, videoElement.duration - 1)
                   );
 
-                  console.log("RESTORING PLAYBACK:", {
-                    targetTime,
-                    duration: videoElement.duration,
-                    readyState: videoElement.readyState,
-                  });
 
                   // Seek ko thoda delay karke browser ko metadata process karne do.
                   requestAnimationFrame(() => {
@@ -1195,11 +1227,6 @@ export default function Watch() {
 
                   if (!pending || !videoElement) return;
 
-                  console.log("SEEK CHECK:", {
-                    targetTime: pending.currentTime,
-                    actualTime: videoElement.currentTime,
-                    seeking: videoElement.seeking,
-                  });
 
                   // Position sahi restore hone par hi pending clear karo.
                   if (Math.abs(videoElement.currentTime - pending.currentTime) < 1) {
@@ -1391,7 +1418,10 @@ export default function Watch() {
                   <button
                     type="button"
                     onClick={handleNextVideo}
-                    disabled={currentPlaylistIndex >= playlistQueue.length - 1}
+                    disabled={
+                      currentPlaylistIndex >= playlistQueue.length - 1 &&
+                      repeatMode !== "all"
+                    }
                   >
                     Next
                   </button>
@@ -1453,40 +1483,20 @@ export default function Watch() {
           {/* Channel aur video actions */}
           <div className="watch-video-actions">
             <div className="watch-channel">
-              <img src={video.avatar} alt={video.channel} />
+              <Link to={`/channel/${video.ownerId}`} aria-label={`${video.channel} channel`}>
+                <img src={video.avatar} alt={video.channel} />
+              </Link>
 
               <div>
-                <h3>{video.channel}</h3>
+                <h3>
+                  <Link to={`/channel/${video.ownerId}`}>{video.channel}</Link>
+                </h3>
                 <p>
                   {subscribersCount.toLocaleString("en-IN")} subscribers
                 </p>
               </div>
 
-              {(() => {
-                const token = localStorage.getItem("accessToken");
-
-                if (!token) return true;
-
-                try {
-                  const payload = token
-                    .split(".")[1]
-                    .replace(/-/g, "+")
-                    .replace(/_/g, "/");
-
-                  const paddedPayload = payload.padEnd(
-                    Math.ceil(payload.length / 4) * 4,
-                    "="
-                  );
-
-                  const currentUserId = JSON.parse(
-                    atob(paddedPayload)
-                  ).user_id;
-
-                  return String(video.ownerId) !== String(currentUserId);
-                } catch {
-                  return true;
-                }
-              })() && (
+              {!isVideoOwner && (
                   <button
                     className={`subscribe-button ${subscribed ? "subscribed" : ""}`}
                     type="button"
@@ -1634,9 +1644,10 @@ export default function Watch() {
               {video.views} views · {video.uploaded}
             </p>
 
-            <p>
-              Welcome to {video.channel}! Watch this video and explore
-              more content on our YouTube-style application.
+            {video.category && <p><strong>{video.category}</strong></p>}
+
+            <p className="watch-description-text">
+              {video.description || "No description provided."}
             </p>
           </div>
 
@@ -1711,12 +1722,14 @@ export default function Watch() {
                         <>
                           <p>{item.content}</p>
 
-                          <button
-                            type="button"
-                            onClick={() => handleEditComment(item)}
-                          >
-                            Edit
-                          </button>
+                          {String(item.user) === String(currentUserId) && (
+                            <button
+                              type="button"
+                              onClick={() => handleEditComment(item)}
+                            >
+                              Edit
+                            </button>
+                          )}
                         </>
                       )}
 
@@ -1787,6 +1800,18 @@ export default function Watch() {
                               <strong>{reply.username} · Reply</strong>
                               <p>{reply.content}</p>
 
+                              {(String(reply.user) === String(currentUserId) ||
+                                isVideoOwner) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteReply(item.id, reply.id)}
+                                  aria-label="Delete reply"
+                                  title="Delete reply"
+                                >
+                                  Delete
+                                </button>
+                              )}
+
                               {/* Reply Like button */}
                               <button
                                 type="button"
@@ -1823,15 +1848,18 @@ export default function Watch() {
                         ))}
                     </div>
 
-                    {/* Delete comment */}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteComment(item.id)}
-                      aria-label="Delete comment"
-                      title="Delete comment"
-                    >
-                      Delete
-                    </button>
+                    {/* Delete comment: author or video owner */}
+                    {(String(item.user) === String(currentUserId) ||
+                      isVideoOwner) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteComment(item.id)}
+                        aria-label="Delete comment"
+                        title="Delete comment"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 ))
               )}

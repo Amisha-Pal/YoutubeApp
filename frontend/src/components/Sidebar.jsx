@@ -12,9 +12,7 @@ import {
   Music2,
   Gamepad2,
   Trophy,
-  ShoppingBag,
   Settings,
-  Flag,
   CircleHelp,
   MessageSquareWarning,
   ChevronRight,
@@ -42,7 +40,6 @@ const exploreLinks = [
   { label: "Music", icon: Music2, path: "/music" },
   { label: "Gaming", icon: Gamepad2, path: "/gaming" },
   { label: "Sports", icon: Trophy, path: "/sports" },
-  { label: "Shopping", icon: ShoppingBag, path: "/shopping" },
 ];
 
 function SidebarSection({
@@ -127,7 +124,6 @@ export default function Sidebar({ isOpen = true }) {
               onNavigate={handleNavigate}
               items={[
                 { label: "Settings", icon: Settings, path: "/settings" },
-                { label: "Report history", icon: Flag, path: "/report-history" },
                 { label: "Help", icon: CircleHelp, path: "/help" },
                 {
                   label: "Send feedback",

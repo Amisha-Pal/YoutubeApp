@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ClockPlus, Check, MoreVertical, Clock } from "lucide-react";
 import { useWatchLater } from "../context/WatchLaterContext";
 
@@ -33,9 +34,9 @@ export default function VideoCard({ video }) {
 
   return (
     <article className="video-card">
-      <a
+      <Link
         className="video-thumbnail"
-        href={`/watch/${video.id}`}
+        to={`/watch/${video.id}`}
         aria-label={`Watch ${video.title}`}
       >
         <img
@@ -44,8 +45,10 @@ export default function VideoCard({ video }) {
           loading="lazy"
         />
 
-        <span className="video-duration">{video.duration}</span>
-      </a>
+        {video.duration && (
+          <span className="video-duration">{video.duration}</span>
+        )}
+      </Link>
 
       <div className="video-details">
         <img
@@ -56,9 +59,17 @@ export default function VideoCard({ video }) {
         />
 
         <div className="video-info">
-          <h3 className="video-title">{video.title}</h3>
+          <h3 className="video-title">
+            <Link to={`/watch/${video.id}`}>{video.title}</Link>
+          </h3>
 
-          <p className="channel-name">{video.channel}</p>
+          <p className="channel-name">
+            {video.ownerId ? (
+              <Link to={`/channel/${video.ownerId}`}>{video.channel}</Link>
+            ) : (
+              video.channel
+            )}
+          </p>
 
           <p className="video-meta">
             {video.views} views <span>·</span> {video.uploaded}

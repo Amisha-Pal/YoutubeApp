@@ -1,7 +1,9 @@
 import axios from "axios";
+import { API_BASE_URL } from "./config";
+import { clearTokens } from "../utils/auth";
 
 const axiosClient = axios.create({
-  baseURL: "http://127.0.0.1:8000/api/",
+  baseURL: API_BASE_URL,
   timeout: 300000,
   headers: {
     Accept: "application/json",
@@ -25,7 +27,7 @@ axiosClient.interceptors.request.use(
       "accounts/token/refresh/",
     ].some((endpoint) => url.includes(endpoint));
 
-    if (!isAuthRequest && !isPublicVideoRequest) {
+    if (!isAuthRequest && !isPublicVideoRequest && !config._skipAuth) {
       const accessToken = localStorage.getItem("accessToken");
 
       if (accessToken) {
@@ -91,8 +93,16 @@ axiosClient.interceptors.response.use(
       return axiosClient(originalRequest);
 
     } catch (refreshError) {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
+      clearTokens();
+
+      // Session expired: retry once anonymously so public pages still load.
+      if (originalRequest.headers?.Authorization) {
+        delete originalRequest.headers.Authorization;
+        originalRequest._skipAuth = true;
+        return axiosClient(originalRequest).catch(() =>
+          Promise.reject(refreshError)
+        );
+      }
 
       return Promise.reject(refreshError);
     }

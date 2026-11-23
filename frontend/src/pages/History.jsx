@@ -1,5 +1,6 @@
 
 import { Link } from "react-router-dom";
+import PageLayout from "../components/PageLayout";
 import { History as HistoryIcon, Trash2, Play } from "lucide-react";
 
 import { useHistory } from "../context/HistoryContext";
@@ -24,7 +25,8 @@ export default function History() {
   }
 
   return (
-    <main className="history-page">
+    <PageLayout>
+    <section className="history-page">
       <div className="history-page-header">
         <div className="history-heading">
           <HistoryIcon size={30} />
@@ -115,7 +117,8 @@ export default function History() {
           ))}
         </section>
       )}
-    </main>
+    </section>
+    </PageLayout>
   );
 }
 

@@ -3,6 +3,10 @@ const API_ENDPOINTS = {
     REGISTER: "accounts/register/",
     LOGIN: "accounts/login/",
     REFRESH: "accounts/token/refresh/",
+    LOGOUT: "accounts/logout/",
+    PROFILE: "accounts/profile/",
+    PASSWORD_RESET: "accounts/password-reset/",
+    PASSWORD_RESET_CONFIRM: "accounts/password-reset/confirm/",
   },
 
   VIDEOS: {

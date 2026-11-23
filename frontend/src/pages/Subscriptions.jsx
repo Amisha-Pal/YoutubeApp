@@ -1,40 +1,54 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Tv } from "lucide-react";
+import VideoFeedPage from "../components/VideoFeedPage";
+import axiosClient from "../api/axiosClient";
+import { isLoggedIn } from "../utils/auth";
+import { avatarFor } from "../utils/format";
 
-import { useState } from "react";
+function SubscribedChannels() {
+  const [channels, setChannels] = useState([]);
 
-import Navbar from "../components/Navbar";
-import Sidebar from "../components/Sidebar";
+  useEffect(() => {
+    if (!isLoggedIn()) return undefined;
+    let cancelled = false;
+    axiosClient
+      .get("videos/subscriptions/")
+      .then((response) => !cancelled && setChannels(response.data))
+      .catch(() => !cancelled && setChannels([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-export default function Subscriptions() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  if (channels.length === 0) return null;
 
   return (
-    <div className="app-shell">
-      <Navbar
-        onMenuClick={() => setSidebarOpen((previous) => !previous)}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
-
-      <div className="app-body">
-        <Sidebar isOpen={sidebarOpen} />
-
-        <main
-          className={`main-content ${
-            sidebarOpen ? "sidebar-expanded" : "sidebar-mini"
-          }`}
-        >
-          <section className="subscriptions-page">
-            <h1>Subscriptions</h1>
-            <p>Videos from your subscribed channels will appear here.</p>
-
-            <div className="empty-results">
-              <h2>No subscriptions yet</h2>
-              <p>Subscribe to channels to see their latest videos here.</p>
-            </div>
-          </section>
-        </main>
-      </div>
+    <div className="subscribed-channels" aria-label="Subscribed channels">
+      {channels.map((channel) => (
+        <Link key={channel.id} to={`/channel/${channel.id}`} className="subscribed-channel">
+          <img
+            src={channel.channel_customization?.profile_picture || avatarFor(channel.username)}
+            alt=""
+          />
+          <span>{channel.username}</span>
+        </Link>
+      ))}
     </div>
+  );
+}
+
+export default function Subscriptions() {
+  return (
+    <VideoFeedPage
+      title="Subscriptions"
+      icon={Tv}
+      endpoint="videos/subscriptions/feed/"
+      requiresAuth
+      emptyTitle="No videos from your subscriptions"
+      emptyMessage="Subscribe to channels to see their latest videos here."
+    >
+      <SubscribedChannels />
+    </VideoFeedPage>
   );
 }

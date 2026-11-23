@@ -130,9 +130,10 @@ export default function Channel() {
         try {
             setSubscriptionLoading(true);
 
-            const response = await axiosClient.post(
-                `videos/channels/${channelId}/subscribe/`
-            );
+            const endpoint = `videos/channels/${channelId}/subscribe/`;
+            const response = channel?.is_subscribed
+                ? await axiosClient.delete(endpoint)
+                : await axiosClient.post(endpoint);
 
             setChannel((previous) => ({
                 ...previous,
@@ -221,6 +222,7 @@ export default function Channel() {
                                             subscribers · {channel.videos_count} videos
                                         </p>
 
+                                        {!isOwnChannel && (
                                         <button
                                             type="button"
                                             className={`subscribe-button ${channel.is_subscribed ? "subscribed" : ""
@@ -240,6 +242,7 @@ export default function Channel() {
                                                     ? "Subscribed"
                                                     : "Subscribe"}
                                         </button>
+                                        )}
 
                                         {isOwnChannel && (
                                             <button
