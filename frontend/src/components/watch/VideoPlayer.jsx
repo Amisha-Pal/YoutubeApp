@@ -81,6 +81,7 @@ export default function VideoPlayer({
   const hideTimerRef = useRef(null);
   const noticeTimerRef = useRef(null);
   const lastVolumeRef = useRef(1);
+  const revealOnlyTapRef = useRef(false);
   const pendingPlaybackRef = useRef(null);
 
   const [activeSrc, setActiveSrc] = useState(src);
@@ -518,7 +519,18 @@ export default function VideoPlayer({
         playsInline
         preload="metadata"
         aria-label={title ? `Video: ${title}` : "Video player"}
-        onClick={togglePlay}
+        onPointerDown={(event) => {
+          revealOnlyTapRef.current =
+            event.pointerType === "touch" && !showControls;
+        }}
+        onClick={() => {
+          if (revealOnlyTapRef.current) {
+            revealOnlyTapRef.current = false;
+            revealControls();
+            return;
+          }
+          togglePlay();
+        }}
         onDoubleClick={toggleFullscreen}
         onPlay={(event) => {
           setPlaying(true);
