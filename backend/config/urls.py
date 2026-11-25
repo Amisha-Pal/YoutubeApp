@@ -1,10 +1,11 @@
-
+from .views import home
 from django.contrib import admin
 from django.urls import include, path, re_path
 from django.conf import settings
 from .media_views import serve_media
 
 urlpatterns = [
+    path("", home, name="home"),
     path("admin/", admin.site.urls),
     path("api/accounts/", include("accounts.urls")),
     path("api/videos/", include("videos.urls")),
